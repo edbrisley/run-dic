@@ -16,6 +16,7 @@
 #-------------------------------------------------------------------------------------
 # Importing libraries
 #-------------------------------------------------------------------------------------
+from tokenize import Double
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -53,20 +54,20 @@ __version__="0.2.1"
 
 #-------------------------------------------------------------------------------------
 class DICImage:
-    def __init__(self,image,setup):
-        self.image = image
-        self.sub_size =  int(setup[0])
-        self.SF_order = setup[1]
-        self.GF_stddev = setup[2]
-        self.GF_filtsize = int(setup[3])
-        self.corr_refstrat = setup[4]
-        self.frequency = int(setup[5])
-        self.img_rows = setup[6]
-        self.img_columns = setup[7]
+    def __init__(self,image,settings):
+        self.image = cv.normalize(image.astype('double'), None, 0.0, 1.0, cv.NORM_MINMAX)
+        self.sub_size =  int(settings[0])
+        self.SF_order = settings[1]
+        self.GF_stddev = settings[2]
+        self.GF_filtsize = int(settings[3])
+        self.corr_refstrat = settings[4]
+        self.frequency = int(settings[5])
+        self.img_rows = settings[6]
+        self.img_columns = settings[7]
         #create coordinates of pixels in subset relative to centre, dX dY
         #(constant subset size-these relative coordinates are the same for all subsets)
         #create coordinates for subset centers
-        self.x, self.y, self.sub_centres = CreateSubsets(setup)
+        self.x, self.y, self.sub_centres = CreateSubsets(settings)
         #shape function parameters of F, 12 parameters for each subset
         self.P = np.zeros([6, self.sub_centres.shape[1]]) 
         self.sub_halfwidth = (self.sub_size-1)/2
@@ -74,24 +75,33 @@ class DICImage:
 
 #-------------------------------------------------------------------------------------       
 class ReferenceImage(DICImage):
-    def __init__(self,image,setup):
-        super().__init__(image,setup)
+    def __init__(self,image,settings):
+        super().__init__(image,settings)
         #gaussian filter applied to reference image
-        #skip blur for now
-        self.image = image#cv.GaussianBlur(image,(self.GF_filtsize,self.GF_filtsize),self.GF_stddev)
+        self.image = cv.GaussianBlur(self.image,
+                                    (self.GF_filtsize,self.GF_filtsize),
+                                    self.GF_stddev)
         #gradient of F in xy directions
-        self.F_grady = np.zeros([image.shape[0], image.shape[1]])#np.array(np.gradient(self.image),dtype=float)
-        self.F_gradx = np.zeros([image.shape[0], image.shape[1]])
+        grad = np.array(np.gradient(self.image),dtype= float)
+        self.F_grady = grad[0]
+        self.F_gradx = grad[1]
 
 
 #-------------------------------------------------------------------------------------
 class DeformedImage(DICImage):
-    def __init__(self,image,setup):
-        super().__init__(image,setup)
-        self.image = image#cv.GaussianBlur(image,(self.GF_filtsize,self.GF_filtsize),self.GF_stddev)
-        #interpolation of image at each pixel location, bicubic b-spline
+    def __init__(self,image,settings):
+        super().__init__(image,settings)
+        #add blurring to 
+        self.image = cv.GaussianBlur(self.image,
+                                    (self.GF_filtsize,self.GF_filtsize),
+                                    self.GF_stddev)
         #interpolation of deformed image
-        self.G_interp_coeff = scipy.interpolate.RegularGridInterpolator((np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),np.linspace(0,self.image.shape[1]-1,self.image.shape[1])), self.image)
+        self.G_interpolated = scipy.interpolate.RegularGridInterpolator(
+                              (np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),
+                               np.linspace(0,self.image.shape[1]-1,self.image.shape[1])),
+                               self.image)
+        
+        #variables to save correlation run results at convergence
         self.corr_coeff = np.zeros([1,self.sub_centres.shape[1]])
         self.stop_val = np.zeros([1,self.sub_centres.shape[1]])
         self.iterations = np.zeros([1,self.sub_centres.shape[1]])
@@ -337,7 +347,7 @@ def DefSubsetInfo(G, deformed_subset,i):
     #based on deformed subset XY coordinates
     g = np.zeros([N_points,1])
     for m in range(0,N_points):
-        g[m] = G.G_interp_coeff(np.array([Y[m],X[m]]))
+        g[m] = G.G_interpolated(np.array([Y[m],X[m]]))
 
     #determine average intensity value of subset g,
     # and normalised sum of squared differences of subset, g_tilde
@@ -374,14 +384,14 @@ def UpdateSFP(P, dP):
                     [1+P[1],    P[2],    P[0]],
                     [ P[4],    1+P[5],   P[3]],
                     [  0,        0,        1 ] 
-                    ])
+                    ]).astype('double')
 
     #w of current deltaP               
     w_dP = np.array([
                      [1+dP[1],     dP[2],    dP[0]],
                      [ dP[4],     1+dP[5],   dP[3]],
                      [   0,          0,        1  ]
-                    ])
+                    ]).astype('double')
 
     #P update matrix                
     up = np.linalg.solve(w_dP,w_P)
@@ -485,7 +495,7 @@ def EstimateDisplacementsFourier(F,G):
 
 
 #-------------------------------------------------------------------------------------
-def EstimateDisplacementsORB(F, G, i, sub_size):
+def EstimateDisplacementsORB(F, G):
     """Initial approximation of the deformation as a rigid body translation using
     ORB feature detector and iteratively reweighted least squares (IRLS).
     
@@ -501,48 +511,54 @@ def EstimateDisplacementsORB(F, G, i, sub_size):
         u0      : Approximate X displacement of subset center
         v0      : Approximate Y displacement of subset center
     """
-    #coordinates of all subset centres
-    centerx = F.sub_centres[0,i]
-    centery = F.sub_centres[1,i]
-    #extract subset based on index i
-    f = F.image[centery-int(0.5*(sub_size-1)):centery+int(0.5*(sub_size-1))+1,
-                centerx-int(0.5*(sub_size-1)):centerx+int(0.5*(sub_size-1))+1]
+    #initialize vectors to store displacements
+    u0 = np.zeros([1,F.sub_centres.shape[1]])
+    v0 = np.zeros([1,F.sub_centres.shape[1]])
 
-    g = G.image[centery-int(0.5*(sub_size-1)):centery+int(0.5*(sub_size-1))+1,
-                centerx-int(0.5*(sub_size-1)):centerx+int(0.5*(sub_size-1))+1]
-    #create ORB object
-    descriptor_extractor = ORB(downscale=1.1,n_keypoints=20,fast_n=5,fast_threshold=0.15)
-    #f keypoints and descriptors
-    descriptor_extractor.detect_and_extract(f)
-    keypoints1 = descriptor_extractor.keypoints
-    descriptors1 = descriptor_extractor.descriptors
-    #g keypoints and descriptors
-    descriptor_extractor.detect_and_extract(g)
-    keypoints2 = descriptor_extractor.keypoints
-    descriptors2 = descriptor_extractor.descriptors
-    #image matching
-    matches = match_descriptors(descriptors1, descriptors2, cross_check=True)
-    #create input data for least-squares
-    n_matches = len(matches)
-    X = np.zeros((2* n_matches, 4))
-    y = np.zeros((2* n_matches, 1))
-    for i in range(0, 2* n_matches, 2):
-        y[i]   = keypoints2[matches[int(i/2)][1]][0]
-        y[i+1] = keypoints2[matches[int(i/2)][1]][1]
-        locX = keypoints1[matches[int(i/2)][0]][0]
-        locY = keypoints1[matches[int(i/2)][0]][1]
-        X[i][0] = 1.0
-        X[i][1] = locX
-        X[i+1][2] = 1.0
-        X[i+1][3] = locY    
-    #initialize least-squares
-    resRLM = None
-    # A robust fit of the model/iteratively reweighted least squares
-    modelRLM = sm.RLM( y, X )
-    resRLM = modelRLM.fit(maxiter = 20, tol = 1e-4)
-    #determine diplcacements from calculated coefficients
-    coefficients = resRLM.params
-    u = coefficients[0]
-    v = coefficients[2]
+    sub_size = F.sub_size
+    for i in range(0,F.sub_centres.shape[1]):
+        #coordinates of all subset centres
+        centerx = F.sub_centres[0,i]
+        centery = F.sub_centres[1,i]
+        #extract subset based on index i
+        f = F.image[centery-int(0.5*(sub_size-1)):centery+int(0.5*(sub_size-1))+1,
+                    centerx-int(0.5*(sub_size-1)):centerx+int(0.5*(sub_size-1))+1]
 
-    return u,v
+        g = G.image[centery-int(0.5*(sub_size-1)):centery+int(0.5*(sub_size-1))+1,
+                    centerx-int(0.5*(sub_size-1)):centerx+int(0.5*(sub_size-1))+1]
+        #create ORB object
+        descriptor_extractor = ORB(downscale=1.1,n_keypoints=20,fast_n=5,fast_threshold=0.15)
+        #f keypoints and descriptors
+        descriptor_extractor.detect_and_extract(f)
+        keypoints1 = descriptor_extractor.keypoints
+        descriptors1 = descriptor_extractor.descriptors
+        #g keypoints and descriptors
+        descriptor_extractor.detect_and_extract(g)
+        keypoints2 = descriptor_extractor.keypoints
+        descriptors2 = descriptor_extractor.descriptors
+        #image matching
+        matches = match_descriptors(descriptors1, descriptors2, cross_check=True)
+        #create input data for least-squares
+        n_matches = len(matches)
+        X = np.zeros((2* n_matches, 4))
+        y = np.zeros((2* n_matches, 1))
+        for i in range(0, 2* n_matches, 2):
+            y[i]   = keypoints2[matches[int(i/2)][1]][0]
+            y[i+1] = keypoints2[matches[int(i/2)][1]][1]
+            locX = keypoints1[matches[int(i/2)][0]][0]
+            locY = keypoints1[matches[int(i/2)][0]][1]
+            X[i][0] = 1.0
+            X[i][1] = locX
+            X[i+1][2] = 1.0
+            X[i+1][3] = locY    
+        #initialize least-squares
+        resRLM = None
+        # A robust fit of the model/iteratively reweighted least squares
+        modelRLM = sm.RLM( y, X )
+        resRLM = modelRLM.fit(maxiter = 20, tol = 1e-4)
+        #determine diplcacements from calculated coefficients
+        coefficients = resRLM.params
+        u0[0,i] = coefficients[0]
+        v0[0,i] = coefficients[3]
+
+    return u0, v0
