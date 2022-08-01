@@ -13,7 +13,7 @@
     ----------
     [1] github repository link: 
 """
-#-------------------------------------------------------------------------------------
+##-------------------------------------------------------------------------------------
 # Importing libraries
 #-------------------------------------------------------------------------------------
 from tokenize import Double
@@ -43,6 +43,9 @@ import patsy as ps
 from patsy import dmatrices
 from patsy import dmatrix
 from numpy import loadtxt
+import os
+from configparser import ConfigParser
+
 
 #-------------------------------------------------------------------------------------
 # Versioning the code
@@ -51,6 +54,57 @@ from numpy import loadtxt
 # Version 0.2.1 - 
 #-------------------------------------------------------------------------------------
 __version__="0.2.1"
+
+
+
+#-------------------------------------------------------------------------------------
+def LoadSettings(image_set):
+    ##load the configuration file containing the DIC settings
+    configur = ConfigParser()
+    configur.read('Settings.ini')
+    sub_size = configur.getint('Subsets','SubsetSize')
+    sub_frequency = configur.getint('Subsets','SubsetFrequency')
+    GF_stddev = configur.getfloat('Filters','GaussianFilterStdDev')
+    GF_filtsize = configur.getint('Filters','GaussianFilterSize')
+    SF_order = configur.getint('Miscellaneous','ShapeFunctionOrder')
+    corr_refstrat = configur.getint('Miscellaneous','CorrelationReferenceStrategy')
+    calibrate = configur.getint('Miscellaneous','Calibration')
+    #store setup parameters
+    settings = np.array([])
+    settings = np.append(settings,sub_size)
+    settings = np.append(settings,SF_order)
+    settings = np.append(settings,GF_stddev)
+    settings = np.append(settings,GF_filtsize)
+    settings = np.append(settings,corr_refstrat)
+    settings = np.append(settings,sub_frequency)
+    #define images working directory
+    img_0 = cv.imread("images/{}".format(image_set[0]),0)
+    img_rows = img_0.shape[0]
+    img_columns = img_0.shape[1]
+    settings = np.append(settings,img_rows)
+    settings = np.append(settings,img_columns)
+    settings = np.append(settings,corr_refstrat)
+    settings = np.append(settings,calibrate)
+    return settings
+
+
+#-------------------------------------------------------------------------------------
+def LoadImages():
+    ##load the images from directory
+    current_working_directory = os.getcwd()
+    folder = '\images'
+    image_location = current_working_directory + folder
+    image_set = []
+    for filename in os.listdir(image_location):    
+        image_set.append(filename)
+    return image_set
+
+
+#-------------------------------------------------------------------------------------
+def SettingsInfo():
+#return a summary of the correlation and image setup
+    pass
+
 
 #-------------------------------------------------------------------------------------
 class DICImage:
@@ -562,3 +616,26 @@ def EstimateDisplacementsORB(F, G):
         v0[0,i] = coefficients[3]
 
     return u0, v0
+
+#----------------------------------------------------------------------------------------
+
+class DIC_2D_Subset:
+
+    def __init__(self, image_set, settings):
+        self.settings = settings
+        self.image_set = image_set
+        self.results = CorrelateImages(image_set, settings)
+
+    def Summary():
+        pass
+    def PlotDisplacements():
+        pass
+    def PlotStrain():
+        pass
+    def PlotStress():
+        pass
+    
+
+def CorrelateImages(image_set, settings):
+
+    pass
