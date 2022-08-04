@@ -6,14 +6,15 @@
     -----
     This is an open-source library.
 
-    This code was setup by Ed Brisley 
+    This code was setup by Ed Brisley, in collaboratin with Prof Gerhard Venter and
+    the Materials Optimisation and Design (MOD) research group at Stellenbosch University.
     June 30, 2023
     
     References
     ----------
     [1] github repository link: 
 """
-##-------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------
 # Importing libraries
 #-------------------------------------------------------------------------------------
 from tokenize import Double
@@ -53,12 +54,33 @@ from configparser import ConfigParser
 # Version 0.2.0 - 
 # Version 0.2.1 - 
 #-------------------------------------------------------------------------------------
-__version__="0.2.1"
+__version__="0.1.0"
 
 
 
 #-------------------------------------------------------------------------------------
 def LoadSettings(image_set):
+    """Load DIC settings specified by user
+    
+    Load DIC settings specified by user in the file, Settings.ini, they are:
+
+    [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+     sub_frequency, corr_refstrat, calibrate]
+
+    Store the specified settings in an array, settings, to be used throughout the rest
+    of the program. Extract the dimensions of the images contained in the image set and
+    add them to the settings array.
+    
+    Parameters
+    ----------
+        image_set    : List of names of images in the image set
+        
+    Returns
+    -------
+        settings    : [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                       sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+    """
+
     ##load the configuration file containing the DIC settings
     configur = ConfigParser()
     configur.read('Settings.ini')
@@ -69,6 +91,7 @@ def LoadSettings(image_set):
     SF_order = configur.getint('Miscellaneous','ShapeFunctionOrder')
     corr_refstrat = configur.getint('Miscellaneous','CorrelationReferenceStrategy')
     calibrate = configur.getint('Miscellaneous','Calibration')
+
     #store setup parameters
     settings = np.array([])
     settings = np.append(settings,sub_size)
@@ -77,6 +100,7 @@ def LoadSettings(image_set):
     settings = np.append(settings,GF_filtsize)
     settings = np.append(settings,corr_refstrat)
     settings = np.append(settings,sub_frequency)
+
     #define images working directory
     img_0 = cv.imread("images/{}".format(image_set[0]),0)
     img_rows = img_0.shape[0]
@@ -90,10 +114,27 @@ def LoadSettings(image_set):
 
 #-------------------------------------------------------------------------------------
 def LoadImages():
-    ##load the images from directory
+    """Load images from directory on which to perform DIC
+    
+    Specify the directory where the images are stored.
+    Read the image names from the directory and store them in a list: image_set.
+
+    Parameters
+    ----------
+        none
+        
+    Returns
+    -------
+        image_set    : List containing image names in the working directory,
+                       in the order they are read
+    """
+
+    #define image directory
     current_working_directory = os.getcwd()
     folder = '\images'
     image_location = current_working_directory + folder
+
+    #read images in directory
     image_set = []
     for filename in os.listdir(image_location):    
         image_set.append(filename)
@@ -101,14 +142,41 @@ def LoadImages():
 
 
 #-------------------------------------------------------------------------------------
-def SettingsInfo():
-#return a summary of the correlation and image setup
-    pass
-
-
-#-------------------------------------------------------------------------------------
 class DICImage:
+    """General DIC image class
+
+    Assign settings variables associated with DIC to image
+    object.
+    Inherited by the ReferenceImage and DeformedImage classes
+    
+    Parameters
+    ----------
+        image           : Grayscale (Intensity) image; range: [0, 255]
+        settings        : DIC settings array as specified by user, 
+                          [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                           sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+    Attributes
+    -------
+        image           : Normalised image; range: [0, 1]
+        
+        settings        : DIC settings array as specified by user, 
+                          [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                           sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+
+        sub_centers     : XY coordinates of all subsets' centres in the mother image
+
+        x, y            : Relative xy coordinates within subset, specified by sub_size
+                          These relative coordinates are the same for all subsets
+                          The coordinates are relative to the respective subset's centre
+                          coordinates (XY) in the mother image, sub_centers
+
+        P               : Affine transformation coefficients
+
+        half_width      : Half-width of the subset
+    """
+
     def __init__(self,image,settings):
+        
         self.image = cv.normalize(image.astype('double'), None, 0.0, 1.0, cv.NORM_MINMAX)
         self.sub_size =  int(settings[0])
         self.SF_order = settings[1]
@@ -118,10 +186,12 @@ class DICImage:
         self.frequency = int(settings[5])
         self.img_rows = settings[6]
         self.img_columns = settings[7]
+
         #create coordinates of pixels in subset relative to centre, dX dY
         #(constant subset size-these relative coordinates are the same for all subsets)
         #create coordinates for subset centers
         self.x, self.y, self.sub_centres = CreateSubsets(settings)
+
         #shape function parameters of F, 12 parameters for each subset
         self.P = np.zeros([6, self.sub_centres.shape[1]]) 
         self.sub_halfwidth = (self.sub_size-1)/2
@@ -129,31 +199,119 @@ class DICImage:
 
 #-------------------------------------------------------------------------------------       
 class ReferenceImage(DICImage):
+    """Reference image class for DIC
+
+    Reference image in measuring deformation during subset-based 2D-DIC.
+    Inherits all attributes from the DICImage class' __init__ method.
+    
+    Parameters
+    (Inherited)
+    ----------
+        image           : Normalised image; range: [0, 1]
+        settings        : DIC settings array as specified by user, 
+                          [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                           sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+    Attributes
+    -------
+        image           : Normalised image after applying a Gaussian blur;
+                          range: [0, 1]
+
+        F_gradX         : Gradient of image intensity in X-direction
+        F_gradY         : Gradient of image intensity in Y-direction
+
+    Attributes
+    (Inherited)
+    -------
+        settings        : DIC settings array as specified by user, 
+                          [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                           sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+
+        sub_centers     : XY coordinates of all subsets' centres in the mother image
+
+        x, y            : Relative xy coordinates within subset, specified by sub_size
+                          These relative coordinates are the same within all subsets
+
+        P               : Affine transformation coefficients
+
+        half_width      : Half-width of the subset
+    """
+
     def __init__(self,image,settings):
+        
+        #inherit settings and intensity image from DICImage Class
         super().__init__(image,settings)
-        #gaussian filter applied to reference image
+
+        #blur reference image with Gaussian filter
         self.image = cv.GaussianBlur(self.image,
                                     (self.GF_filtsize,self.GF_filtsize),
                                     self.GF_stddev)
-        #gradient of F in xy directions
+                                    
+        #gradient of F (reference image) in xy directions
         grad = np.array(np.gradient(self.image),dtype= float)
-        self.F_grady = grad[0]
-        self.F_gradx = grad[1]
+        self.F_gradX = grad[0]
+        self.F_gradY = grad[1]
 
 
 #-------------------------------------------------------------------------------------
 class DeformedImage(DICImage):
+    """Deformed image class for DIC
+
+    Deformed image in measuring deformation during subset-based 2D-DIC.
+    Inherits all attributes from the DICImage class' __init__ method.
+    
+    Parameters
+    (Inherited)
+    ----------
+        image           : Normalised image; range: [0, 1]
+        settings        : DIC settings array as specified by user, 
+                          [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                           sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+    Attributes
+    -------
+        image           : Normalised image after applying a Gaussian blur;
+                          range: [0, 1]
+
+        G_interpolated  : Interpolated image; range: [0, 1]
+                          (intensity values range changed from discrete XY
+                           integer-pixel locations to a continuos XY domain)
+
+        corr_coeff      : Correlation coefficients at convergence (all subsets)
+
+        stop_val        : Exit criteria at convergence (all subsets)
+
+        iterations      : No. of iterations at convergence (all subsets)
+
+    Attributes
+    (Inherited)
+    -------
+        settings        : DIC settings array as specified by user, 
+                          [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                           sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+
+        sub_centers     : XY coordinates of all subsets' centres in the mother image
+
+        x, y            : Relative xy coordinates within subset, specified by sub_size
+                          These relative coordinates are the same within all subsets
+
+        P               : Affine transformation coefficients
+
+        half_width      : Half-width of the subset
+    """
+
     def __init__(self,image,settings):
+
+        #inherit settings and intensity image from DICImage Class
         super().__init__(image,settings)
-        #add blurring to 
+
+        #blur reference image with Gaussian filter 
         self.image = cv.GaussianBlur(self.image,
                                     (self.GF_filtsize,self.GF_filtsize),
                                     self.GF_stddev)
         #interpolation of deformed image
-        self.G_interpolated = scipy.interpolate.RegularGridInterpolator(
-                              (np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),
-                               np.linspace(0,self.image.shape[1]-1,self.image.shape[1])),
-                               self.image)
+        self.G_interpolated = scipy.interpolate.RectBivariateSpline(
+                              np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),
+                              np.linspace(0,self.image.shape[1]-1,self.image.shape[1]),
+                              self.image, kx = 5, ky = 5)
         
         #variables to save correlation run results at convergence
         self.corr_coeff = np.zeros([1,self.sub_centres.shape[1]])
@@ -161,17 +319,7 @@ class DeformedImage(DICImage):
         self.iterations = np.zeros([1,self.sub_centres.shape[1]])
 
 
-#-------------------------------------------------------------------------------------        
-class StoreDICResults:
-    def __init__(self, displacement):
-        self.displacement = displacement
 
-
-#-------------------------------------------------------------------------------------
-class PlotDICResults(StoreDICResults):
-    def __init__(self, displacement):
-        super().__init__(displacement)
-        #self.meshgrid =
 
 #-------------------------------------------------------------------------------------
 def CreateSubsets(setup):
@@ -325,7 +473,7 @@ def Hessian(dfdx,dfdy,F):
     return Hess, fgrad_X_dWdP
 
 
-#-------------------------------------------------------------------------------------
+##-------------------------------------------------------------------------------------
 def AffineTrans(G,i):
     """Deform the subset using an affine transformation
 
@@ -342,6 +490,7 @@ def AffineTrans(G,i):
     -------
         deformed_subset : Deformation of subset at all xy (relative subset) coordinates
     """
+
 
     #fetch affine transformation coefficients/shape function parameters (SFP's)
     P = G.P[:,i]
@@ -400,8 +549,10 @@ def DefSubsetInfo(G, deformed_subset,i):
     #extract  deformed subset intensity values, g, from mother image, G.Interpolated,
     #based on deformed subset XY coordinates
     g = np.zeros([N_points,1])
+    # for m in range(0,N_points):
+    #     g[m] = G.G_interpolated(np.array([Y[m],X[m]]))
     for m in range(0,N_points):
-        g[m] = G.G_interpolated(np.array([Y[m],X[m]]))
+        g[m] = G.G_interpolated(Y[m],X[m])
 
     #determine average intensity value of subset g,
     # and normalised sum of squared differences of subset, g_tilde
@@ -482,6 +633,8 @@ def StopCriteria(dP, zeta):
     -------
         convergence_parameter  : Convergence parameter for current iteration of SFP's
     """
+
+
     # (23)
     #create zeta vector and compute convergence_parameter
     zeta_vector = np.array([[1,zeta,zeta,1,zeta,zeta]])
@@ -565,6 +718,8 @@ def EstimateDisplacementsORB(F, G):
         u0      : Approximate X displacement of subset center
         v0      : Approximate Y displacement of subset center
     """
+
+
     #initialize vectors to store displacements
     u0 = np.zeros([1,F.sub_centres.shape[1]])
     v0 = np.zeros([1,F.sub_centres.shape[1]])
@@ -617,8 +772,9 @@ def EstimateDisplacementsORB(F, G):
 
     return u0, v0
 
-#----------------------------------------------------------------------------------------
 
+#INCOMPLETE
+#------------------------------------------------------------------------------------- 
 class DIC_2D_Subset:
 
     def __init__(self, image_set, settings):
@@ -636,6 +792,34 @@ class DIC_2D_Subset:
         pass
     
 
+#INCOMPLETE
+#------------------------------------------------------------------------------------- 
 def CorrelateImages(image_set, settings):
 
+    pass
+
+
+#INCOMPLETE
+#-------------------------------------------------------------------------------------        
+class StoreDICResults:
+
+    def __init__(self, displacement):
+        
+        self.displacement = displacement
+
+
+#INCOMPLETE
+#-------------------------------------------------------------------------------------
+class PlotDICResults(StoreDICResults):
+
+    def __init__(self, displacement):
+
+        super().__init__(displacement)
+        #self.meshgrid =
+
+
+#INCOMPLETE
+#-------------------------------------------------------------------------------------
+def SettingsInfo():
+#return a summary of the correlation and image setup
     pass
