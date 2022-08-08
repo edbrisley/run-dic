@@ -46,6 +46,7 @@ from patsy import dmatrix
 from numpy import loadtxt
 import os
 from configparser import ConfigParser
+from scipy.interpolate import RectBivariateSpline
 
 
 #-------------------------------------------------------------------------------------
@@ -55,7 +56,6 @@ from configparser import ConfigParser
 # Version 0.2.1 - 
 #-------------------------------------------------------------------------------------
 __version__="0.1.0"
-
 
 
 #-------------------------------------------------------------------------------------
@@ -248,8 +248,8 @@ class ReferenceImage(DICImage):
                                     
         #gradient of F (reference image) in xy directions
         grad = np.array(np.gradient(self.image),dtype= float)
-        self.F_gradX = grad[0]
-        self.F_gradY = grad[1]
+        self.F_gradY = grad[0]
+        self.F_gradX = grad[1]
 
 
 #-------------------------------------------------------------------------------------
@@ -308,17 +308,15 @@ class DeformedImage(DICImage):
                                     (self.GF_filtsize,self.GF_filtsize),
                                     self.GF_stddev)
         #interpolation of deformed image
-        self.G_interpolated = scipy.interpolate.RectBivariateSpline(
+        self.G_interpolated = RectBivariateSpline(
                               np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),
                               np.linspace(0,self.image.shape[1]-1,self.image.shape[1]),
-                              self.image, kx = 5, ky = 5)
+                              self.image, kx = 3, ky = 3)
         
         #variables to save correlation run results at convergence
         self.corr_coeff = np.zeros([1,self.sub_centres.shape[1]])
         self.stop_val = np.zeros([1,self.sub_centres.shape[1]])
         self.iterations = np.zeros([1,self.sub_centres.shape[1]])
-
-
 
 
 #-------------------------------------------------------------------------------------
@@ -413,9 +411,9 @@ def RefSubsetInfo(F,i):
                 centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
 
     #extract subset spatial gradients
-    dfdy = F.F_grady[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
+    dfdy = F.F_gradY[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
                     centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
-    dfdx = F.F_gradx[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
+    dfdx = F.F_gradX[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
                     centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
 
     #average subset intensity, and normalsied sum of squared differences
@@ -549,8 +547,6 @@ def DefSubsetInfo(G, deformed_subset,i):
     #extract  deformed subset intensity values, g, from mother image, G.Interpolated,
     #based on deformed subset XY coordinates
     g = np.zeros([N_points,1])
-    # for m in range(0,N_points):
-    #     g[m] = G.G_interpolated(np.array([Y[m],X[m]]))
     for m in range(0,N_points):
         g[m] = G.G_interpolated(Y[m],X[m])
 
