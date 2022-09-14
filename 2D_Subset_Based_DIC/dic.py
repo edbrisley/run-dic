@@ -21,15 +21,8 @@ from tokenize import Double
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-import importlib
-import sys  
-import copy
-import scipy as sp
-import csv
 import cv2 as cv
 from scipy.linalg import solve
-import scipy.interpolate
-import time
 import pandas as pd
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -46,7 +39,7 @@ from patsy import dmatrix
 from numpy import loadtxt
 import os
 from configparser import ConfigParser
-from scipy.interpolate import RectBivariateSpline
+from fast_interp import interp2d
 
 
 #-------------------------------------------------------------------------------------
@@ -84,31 +77,34 @@ def LoadSettings(image_set):
     ##load the configuration file containing the DIC settings
     configur = ConfigParser()
     configur.read('Settings.ini')
-    sub_size = configur.getint('Subsets','SubsetSize')
-    sub_frequency = configur.getint('Subsets','SubsetFrequency')
-    GF_stddev = configur.getfloat('Filters','GaussianFilterStdDev')
-    GF_filtsize = configur.getint('Filters','GaussianFilterSize')
-    SF_order = configur.getint('Miscellaneous','ShapeFunctionOrder')
-    corr_refstrat = configur.getint('Miscellaneous','CorrelationReferenceStrategy')
-    calibrate = configur.getint('Miscellaneous','Calibration')
+    sub_size = configur.getint('Subsets', 'SubsetSize')
+    sub_frequency = configur.getint('Subsets', 'SubsetFrequency')
+    GF_stddev = configur.getfloat('Filters', 'GaussianFilterStdDev')
+    GF_filtsize = configur.getint('Filters', 'GaussianFilterSize')
+    SF_order = configur.getint('Miscellaneous', 'ShapeFunctionOrder')
+    corr_refstrat = configur.get('Miscellaneous', 'CorrelationReferenceStrategy')
+    calibrate = configur.get('Miscellaneous', 'Calibration')
+    sub_shape = configur.get('Subsets', 'SubsetShape')
 
     #store setup parameters
-    settings = np.array([])
-    settings = np.append(settings,sub_size)
-    settings = np.append(settings,SF_order)
-    settings = np.append(settings,GF_stddev)
-    settings = np.append(settings,GF_filtsize)
-    settings = np.append(settings,corr_refstrat)
-    settings = np.append(settings,sub_frequency)
+    settings = []
+    settings.append(sub_size)
+    settings.append(SF_order)
+    settings.append(GF_stddev)
+    settings.append(GF_filtsize)
+    settings.append(corr_refstrat)
+    settings.append(sub_frequency)
 
-    #define images working directory
+    #determine image dimensions
     img_0 = cv.imread("images/{}".format(image_set[0]),0)
     img_rows = img_0.shape[0]
     img_columns = img_0.shape[1]
-    settings = np.append(settings,img_rows)
-    settings = np.append(settings,img_columns)
-    settings = np.append(settings,corr_refstrat)
-    settings = np.append(settings,calibrate)
+    settings.append(img_rows)
+    settings.append(img_columns)
+
+    settings.append(calibrate)
+    settings.append(sub_shape)
+    
     return settings
 
 
@@ -190,7 +186,9 @@ class DICImage:
         #create coordinates of pixels in subset relative to centre, dX dY
         #(constant subset size-these relative coordinates are the same for all subsets)
         #create coordinates for subset centers
-        self.x, self.y, self.sub_centres = CreateSubsets(settings)
+        #self.x, self.y, self.sub_centres = CreateSubsets(settings)
+        #create subsets specifically for Sample 14 of the DIC challenge
+        self.x, self.y, self.sub_centres = CreateSubsetsSample14(settings)
 
         #shape function parameters of F, 12 parameters for each subset
         self.P = np.zeros([6, self.sub_centres.shape[1]]) 
@@ -308,15 +306,76 @@ class DeformedImage(DICImage):
                                     (self.GF_filtsize,self.GF_filtsize),
                                     self.GF_stddev)
         #interpolation of deformed image
-        self.G_interpolated = RectBivariateSpline(
-                              np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),
-                              np.linspace(0,self.image.shape[1]-1,self.image.shape[1]),
-                              self.image, kx = 3, ky = 3)
+        # self.G_interpolated = RectBivariateSpline(
+        #                       np.linspace(0,self.image.shape[0]-1,self.image.shape[0]),
+        #                       np.linspace(0,self.image.shape[1]-1,self.image.shape[1]),
+        #                       self.image, kx = 3, ky = 3)
+        #interpolation of deformed image
+        self.G_interpolated = FastInterpolation(self.image)
         
         #variables to save correlation run results at convergence
         self.corr_coeff = np.zeros([1,self.sub_centres.shape[1]])
         self.stop_val = np.zeros([1,self.sub_centres.shape[1]])
         self.iterations = np.zeros([1,self.sub_centres.shape[1]])
+
+
+#-------------------------------------------------------------------------------------
+def CreateSubsetsSample14(setup):
+    """Create image subsets
+    
+    Store XY coordinates of each subset centre
+    (XY coordinates are the global coordinates in the mother image)
+    
+    Store xy coordinates of pixels within subset, these coordinates are the same
+    for all subsets
+    (xy coordinates are the relative local coordinates within the subset)
+
+
+    Parameters
+    ----------
+        setup       : [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
+                       sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
+    
+    Returns
+    -------
+        x           : Relative x coordinates within subsets
+        y           : Relative y coordinates within subsets
+        sub_centers : XY coordinates of all subsets' centres
+    """
+
+    #fetch setup variables
+    sub_size = int(setup[0])
+    sub_frequency = int(setup[5])
+    img_rows = int(setup[6]) 
+    img_columns = int(setup[7])
+
+    #create subset centres XY coordinates as MESHGRIDS
+    sub_centres_y, sub_centres_x = np.meshgrid(np.arange(25,
+                                                         570,
+                                                         sub_frequency),
+                                               np.arange(25,
+                                                         2030,
+                                                         sub_frequency),
+                                               indexing = 'ij')
+
+
+    #
+
+    #flatten subset centres XY coordinates to vectors
+    sub_centres_x = np.array([sub_centres_x.flatten(order = 'F')]).T
+    sub_centres_y = np.array([sub_centres_y.flatten(order = 'F')]).T
+    sub_centers = np.vstack((sub_centres_x.T,sub_centres_y.T))
+
+    #create subset xy relative coordinates
+    [y, x]=np.meshgrid(np.linspace(-0.5*(sub_size-1),0.5*(sub_size-1),sub_size),
+                         np.linspace(-0.5*(sub_size-1),0.5*(sub_size-1),sub_size),
+                         indexing='ij')
+
+    #flatten subset xy relative coordinates to vectors
+    x = np.array([x.flatten(order = 'F')]).T
+    y = np.array([y.flatten(order = 'F')]).T
+
+    return x, y, sub_centers
 
 
 #-------------------------------------------------------------------------------------
@@ -546,9 +605,9 @@ def DefSubsetInfo(G, deformed_subset,i):
 
     #extract  deformed subset intensity values, g, from mother image, G.Interpolated,
     #based on deformed subset XY coordinates
-    g = np.zeros([N_points,1])
-    for m in range(0,N_points):
-        g[m] = G.G_interpolated(Y[m],X[m])
+    g = np.array([G.G_interpolated(Y, X)]).T
+    # for m in range(0,N_points):
+    #     g[m] = G.G_interpolated(Y[m],X[m])
 
     #determine average intensity value of subset g,
     # and normalised sum of squared differences of subset, g_tilde
@@ -610,7 +669,7 @@ def UpdateSFP(P, dP):
 
     return Pupdate
 
-
+#
 #-------------------------------------------------------------------------------------
 def StopCriteria(dP, zeta):
     """Determine the value of the convergence parameter for the current estimate
@@ -769,7 +828,43 @@ def EstimateDisplacementsORB(F, G):
     return u0, v0
 
 
-#INCOMPLETE
+##-------------------------------------------------------------------------------------
+def FastInterpolation(image):
+    """2D structured Interpolation function
+    
+    Convert image to a continous domain to retrieve sub-pixel intensity values
+
+    https://github.com/dbstein/fast_interp
+
+
+    Parameters
+    ----------
+        image              : image over which to interpolate
+
+        k                   : order of interpolation function
+        (internal parameter)
+
+    Returns
+    -------
+        image_interpolated  : Relative x coordinates within subsets
+    
+    """ 
+
+    #image coordinates
+    ny = image.shape[0]
+    nx = image.shape[1]
+
+        #interpolation
+    image_interpolated = interp2d([0,0], [ny-1,nx-1], [1,1], image, k=5, p=[False,False], e=[1,0])
+    return image_interpolated
+
+
+
+
+
+
+
+#INCOMPLETE FUNCTIONS (NOT IN  USE)
 #------------------------------------------------------------------------------------- 
 class DIC_2D_Subset:
 
@@ -787,15 +882,11 @@ class DIC_2D_Subset:
     def PlotStress():
         pass
     
-
-#INCOMPLETE
 #------------------------------------------------------------------------------------- 
 def CorrelateImages(image_set, settings):
 
     pass
 
-
-#INCOMPLETE
 #-------------------------------------------------------------------------------------        
 class StoreDICResults:
 
@@ -803,8 +894,6 @@ class StoreDICResults:
         
         self.displacement = displacement
 
-
-#INCOMPLETE
 #-------------------------------------------------------------------------------------
 class PlotDICResults(StoreDICResults):
 
@@ -812,10 +901,9 @@ class PlotDICResults(StoreDICResults):
 
         super().__init__(displacement)
         #self.meshgrid =
-
-
-#INCOMPLETE
 #-------------------------------------------------------------------------------------
 def SettingsInfo():
+
 #return a summary of the correlation and image setup
     pass
+
