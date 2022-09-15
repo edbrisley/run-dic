@@ -7,5 +7,9 @@ Use the naming convention 'img0', 'img1' to ensure they are read in the correct 
 
 The requirements.txt file contain the packages installed in the virtual environment.
 Additional packages must be installed from:
-interpolation:                https://github.com/dbstein/fast_interp
-regularized differentiation:  https://github.com/rickchartrand/regularized_differentiation
+
+interpolation:
+https://github.com/dbstein/fast_interp
+
+regularized differentiation:
+https://github.com/rickchartrand/regularized_differentiation
