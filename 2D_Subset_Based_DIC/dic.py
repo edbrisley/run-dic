@@ -188,7 +188,7 @@ class DICImage:
         #create coordinates for subset centers
         #self.x, self.y, self.sub_centres = CreateSubsets(settings)
         #create subsets specifically for Sample 14 of the DIC challenge
-        self.x, self.y, self.sub_centres = CreateSubsetsSample14(settings)
+        self.x, self.y, self.sub_centres = CreateSubsets(settings)
 
         #shape function parameters of F, 12 parameters for each subset
         self.P = np.zeros([6, self.sub_centres.shape[1]]) 
