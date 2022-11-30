@@ -7,11 +7,11 @@ from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 
 #%%
-##load image set from directory
+###load image set from directory
 image_set = dic.LoadImages()
 #load settings from config file
 settings = dic.LoadSettings(image_set)
-#no of images in directory
+##no of images in directory
 N_images = len(image_set)
 #%%
 #initialise reference image object
