@@ -201,7 +201,7 @@ G_interp = FastInterpolation(G)
 #mesh parameters
 Ni_matrix, dNi_xi_matrix, dNi_eta_matrix  = Q4SFMatrix()
 wg = np.ones(4)
-freq = 8
+freq = 10
 l0 = 200
 node_coords, element_conn, dof, N_dof, N_elements, N_ip = MeshS14(freq)
 #xy-coordinates connectivity table
