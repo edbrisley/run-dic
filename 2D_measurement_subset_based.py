@@ -39,6 +39,7 @@ dic.CorrelateImages2D(F, G, settings)
 #%%
 #plot x-displacement results
 u = G.P[0, :]
+print('\netremes', np.max(u), np.min(u), '\ndouble_amp:', np.max(u) - np.min(u))
 N_subsets = G.P.shape[1]
 N_rows = G.image.shape[0]
 N_cols = G.image.shape[1]
