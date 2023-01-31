@@ -1,11 +1,8 @@
 """Subset-based 2D Digital Image Correlation library
-
     Functions in this library are used to perform Subset-based 2D-DIC.
-
     Notes
     -----
     This is an open-source library.
-
     This code was setup by Ed Brisley, in collaboratin with Prof Gerhard Venter and
     the Materials Optimisation and Design (MOD) research group at Stellenbosch University.
     June 30, 2023
@@ -14,7 +11,7 @@
     ----------
     [1] github repository link: 
 """
-##-------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------
 # Importing libraries
 #-------------------------------------------------------------------------------------
 from tokenize import Double
@@ -40,7 +37,8 @@ import glob
 #SKIMAGE packages
 from skimage import data
 from skimage.util import img_as_float
-from skimage.transform import warp, AffineTransform, FundamentalMatrixTransform
+from skimage.transform import warp, AffineTransform
+from skimage.transform import FundamentalMatrixTransform, ProjectiveTransform
 from skimage.exposure import rescale_intensity
 from skimage.measure import ransac
 import skimage as sk
@@ -66,10 +64,8 @@ def LoadSettings(image_set):
     """Load DIC settings specified by user
     
     Load DIC settings specified by user in the file, Settings.ini, they are:
-
     [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
      sub_frequency, corr_refstrat, calibrate]
-
     Store the specified settings in an array, settings, to be used throughout the rest
     of the program. Extract the dimensions of the images contained in the image set and
     add them to the settings array.
@@ -106,7 +102,7 @@ def LoadSettings(image_set):
     settings['SubsetFrequency'] = sub_frequency
 
     #determine image dimensions
-    img_0 = cv.imread("images/{}".format(image_set[0]),0)
+    img_0 = cv.imread("images2/{}".format(image_set[0]),0)
     img_rows = img_0.shape[0]
     img_columns = img_0.shape[1]
     settings['ImageColumns'] = img_columns
@@ -123,7 +119,6 @@ def LoadImages():
     
     Specify the directory where the images are stored.
     Read the image names from the directory and store them in a list: image_set.
-
     Parameters
     ----------
         none
@@ -138,10 +133,10 @@ def LoadImages():
     current_working_directory = os.getcwd()
     #detect OS 
     if platform.system() == 'Linux':
-        image_folder = '/images'
+        image_folder = '/images2'
     #windows machine (need to add macOS option)
     else:
-        image_folder = '\images'
+        image_folder = '\images2'
     #location of images for DIC measurement
     image_location = current_working_directory + image_folder
     #read images in directory
@@ -155,7 +150,6 @@ def LoadImages():
 #-------------------------------------------------------------------------------------
 class DICImage:
     """General DIC image class
-
     Assign settings variables associated with DIC to image object.
     Inherited by the ReferenceImage and DeformedImage classes
     
@@ -173,7 +167,6 @@ class DICImage:
         settings        : DIC settings array as specified by user, 
                           [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
                            sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
-
     """
 
     def __init__(self, image, settings):
@@ -196,7 +189,6 @@ class DICImage:
 #-------------------------------------------------------------------------------------       
 class ReferenceImage(DICImage):
     """Reference image class for DIC
-
     Reference image for measuring deformation during subset-based 2D-DIC.
     Inherits all attributes from the DICImage class' __init__ method.
     
@@ -224,7 +216,6 @@ class ReferenceImage(DICImage):
                           range: [0, 1]
         F_gradX         : Gradient of image intensity in X-direction
         F_gradY         : Gradient of image intensity in Y-direction
-
     Attributes
     (CreateSubsets method)
     -------
@@ -259,7 +250,6 @@ class ReferenceImage(DICImage):
     Store xy relative coordinates of pixels within subset, these coordinates are the same
     for all subsets
     (xy coordinates are the relative local coordinates within the subset)
-
     Parameters
     ----------
         settings        : [sub_size, SF_order, GF_stddev, GF_filtsize, corr_refstrat,
@@ -300,12 +290,12 @@ class ReferenceImage(DICImage):
         #create subset centers XY coordinates as MESHGRIDS
         sub_centers_y, sub_centers_x = np.meshgrid(
                                        np.arange(
-                                            int(y_origin + 0.5*(sub_size-1) + sub_freq),
-                                            int(y_bound - 0.5*(sub_size-1)),
+                                            int(y_origin + 5*(sub_size-1) + sub_freq),
+                                            int(y_bound - 5*(sub_size-1)),
                                             sub_freq),
                                        np.arange(
-                                            int(x_origin + 0.5*(sub_size-1) + sub_freq),
-                                            int(x_bound - 0.5*(sub_size-1)),
+                                            int(x_origin + 5*(sub_size-1) + sub_freq),
+                                            int(x_bound - 5*(sub_size-1)),
                                             sub_freq),
                                             indexing = 'ij')
 
@@ -331,11 +321,48 @@ class ReferenceImage(DICImage):
         else:
             self.P = np.zeros([12, self.sub_centers.shape[1]])
 
+    #-------------------------------------------------------------------------------------
+    def CreateSubsetsSample14(self, settings, ROI_coords = np.zeros([4])):
+
+            #fetch setup variables
+        sub_size = int(settings['SubsetSize'])
+        sub_freq = int(settings['SubsetFrequency'])
+
+        #create subset centers XY coordinates as MESHGRIDS
+        #create subset centers XY coordinates as MESHGRIDS
+        sub_centers_y, sub_centers_x = np.meshgrid(np.arange(25,
+                                                            570,
+                                                            sub_freq),
+                                                    np.arange(25,
+                                                            2030,
+                                                            sub_freq),
+                                                    indexing = 'ij')
+
+        #flatten subset centers XY coordinates to vectors
+        sub_centers_x = np.array([sub_centers_x.flatten(order = 'F')]).T
+        sub_centers_y = np.array([sub_centers_y.flatten(order = 'F')]).T
+        self.sub_centers = np.vstack((sub_centers_x.T,sub_centers_y.T))
+
+        #create subset xy relative coordinates
+        [y, x]=np.meshgrid(np.linspace(-0.5*(sub_size-1),0.5*(sub_size-1),sub_size),
+                            np.linspace(-0.5*(sub_size-1),0.5*(sub_size-1),sub_size),
+                            indexing='ij')
+
+        #flatten subset xy relative coordinates to vectors
+        self.x = np.array([x.flatten(order = 'F')]).T
+        self.y = np.array([y.flatten(order = 'F')]).T
+
+        #shape function parameters of F, dependent on SF order
+        if self.SF_order == 0:
+            self.P = np.zeros([4, self.sub_centers.shape[1]])
+        elif self.SF_order == 1:
+            self.P = np.zeros([6, self.sub_centers.shape[1]]) 
+        else:
+            self.P = np.zeros([12, self.sub_centers.shape[1]])
 
 #-------------------------------------------------------------------------------------
 class DeformedImage(DICImage):
     """Deformed image class for DIC
-
     Deformed image in measuring deformation during subset-based 2D-DIC.
     Inherits all attributes from the DICImage class' __init__ method.
     
@@ -355,7 +382,6 @@ class DeformedImage(DICImage):
                            sub_frequency, img_rows, img_columns, corr_refstrat, calibrate]
         image_8bit      : 8 bit depth image; range: [0, 255]
                           reserved to allow for ROI selection and feature detection
-
     Attributes
     (__init__ method)
     -------
@@ -364,8 +390,6 @@ class DeformedImage(DICImage):
         G_interpolated  : Interpolated image; range: [0, 1]
                           (intensity values range changed from discrete XY
                            integer-pixel locations to a continuos XY domain)
-
-
     Attributes
     (InitCorrelationParams)
     -------
@@ -376,7 +400,6 @@ class DeformedImage(DICImage):
         corr_coeff      : Correlation coefficients at convergence (all subsets)
         stop_val        : Exit criteria at convergence (all subsets)
         iterations      : No. of iterations at convergence (all subsets)
-
     """
 
     def __init__(self,image,settings):
@@ -394,7 +417,6 @@ class DeformedImage(DICImage):
     #auxiliary method
     def InitCorrelationParams(self, F):
         """Initialise correletaion parameters for deformed image object
-
             Initial estimates for subset centre coordinates and SFPs are set as those of the
             reference image.
  
@@ -423,17 +445,11 @@ class DeformedImage(DICImage):
 #-------------------------------------------------------------------------------------
 def RefSubsetInfo(F, i):
     """Extract reference subset, f, from reference image, F
-
     Extract subset f from F, based on the subset center coordinates of f - specified by
     index, i
-
     Determine average intensity value of all pixels in subset f - f_mean
-
     Determine normalised sum of squared differences of subset - f_tilde
-
     Determine subset spatial gradients dfdx and dfdy from F.Fgrad - specified by index, i 
-
-
     Parameters
     ----------
         F       : Reference image object
@@ -472,20 +488,15 @@ def RefSubsetInfo(F, i):
 #-------------------------------------------------------------------------------------
 def Hessian(dfdx, dfdy, F):
     """Determine the Hessian of the reference subset
-
     The Hessian matrix of the reference subset stays constant during the optimization
     iterations
-
     Determine procuct of subset gradient [dfdx, dfdy] and warp function gradient dWdP ??
-
     Determine Hessian matrix as fgrad_X_dWdP.T*fgrad_X_dWdP.T
-
     Parameters
     ----------
         dfdx          : Subset spatial gradient of intensity values in x
         dfdy          : Subset spatial gradient of intensity values in y
         F             : Reference image object
-
     Returns
     -------
         Hess          : Reference subset Hessian matrix
@@ -540,16 +551,13 @@ def Hessian(dfdx, dfdy, F):
 ##-------------------------------------------------------------------------------------
 def AffineTrans(G, i):
     """Deform the subset using an affine transformation
-
     Deform the subset using affine transformation coefficients/ shape function
     parameters (SFP's) of the current iteration.
-
     Parameters
     ----------
         G               : Deformed image object
         i               : Index specifying the XY coordinates of the deformed
                           subset center
-
     Returns
     -------
         deformed_subset : Deformation of subset at all xy (relative subset) coordinates
@@ -576,15 +584,11 @@ def AffineTrans(G, i):
 #-------------------------------------------------------------------------------------
 def DefSubsetInfo(F, G, deformed_subset, i):
     """Extract deformed subset, g, from deformed image, G
-
     Extract subset g from G, based on the subset center coordinates of g - specified 
     by the index, i; and the deformation of the subset determined using the function
     AffineTransform
-
     Determine average intensity value of all pixels in subset g - g_mean
-
     Determine normalised sum of squared differences of subset g - g_tilde
-
     Parameters
     ----------
         G               : Deformed image object
@@ -628,16 +632,13 @@ def DefSubsetInfo(F, G, deformed_subset, i):
 def UpdateSFP(P, dP):
     """Update SFP's/Affine transformation coefficients based on SFP's (P) of current
        iteration and deltaP,  the inverted iterative improvement of the SFP's.
-
     a Matrix w(P) is populated with the current estimate of P. a Matrix w(dP) is
     populated with the terms in dP (inverted iterative improvement of P). The updated
     SFP's (Pupdate) are determined by extracting terms from the product of w(P)*w(dP)^-1.
-
     Parameters
     ----------
         P       : SFP's vector
         dP      : Inverted iterative improvement of SFP's
-
     Returns
     -------
         Pupdate : Updated estimate of SFP's
@@ -766,16 +767,13 @@ def UpdateSFP(P, dP):
 def StopCriteria(dP, zeta):
     """Determine the value of the convergence parameter for the current estimate
        of the SFP's.
-
     The convergence parameter is computed as the normalised sum of squares of the
     product of P and [1,zeta,zeta,1,zeta,zeta]
-
     Parameters
     ----------
         dP                     : Inverted iterative improvement
                                  for current iteration of SFP's
         zeta                   : Halfwidth of the square subset
-
     Returns
     -------
         convergence_parameter  : Convergence parameter for current iteration of SFP's
@@ -797,21 +795,18 @@ def StopCriteria(dP, zeta):
 
 
 #-------------------------------------------------------------------------------------
-def EstimateDisplacementsFourier(F, G):
+def EstimateDisplacementsFourier(F, G, invalid_sub_indices = None):
     """Initial approximation of the deformation as a rigid body translation using
     Fourier analysis.
     
     Convolution theorem: convolution (correlation) in the spatial
     domain is equivalent to multiplication in the frequency domain. The operation is
     generally faster in the frequency domain than in the spatial domain.
-
     Determine vectors u0, v0: approximate displacement of all subset centers 
-
     Parameters
     ----------
         F       : Reference image object
-        G       : Deformed image object
-
+        R1       : Deformed image object
     Returns
     -------
         u0      : Approximate X displacement of subset center
@@ -828,29 +823,37 @@ def EstimateDisplacementsFourier(F, G):
     #loop through all subsets, determine the displacements of each subset
     for i in range(0,F.sub_centers.shape[1]):
 
-        #fetch subset center coordinates
-        centerx, centery = np.array([F.sub_centers[0][i],F.sub_centers[1][i]])
+        if invalid_sub_indices is not None and i in invalid_sub_indices:
+                pass
+        else:
+                #fetch subset center coordinates
+                centerx, centery = np.array([F.sub_centers[0][i], F.sub_centers[1][i]])
+                
+                # print(i)
+                # print(F.image[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
+                #         centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1].shape)
+                # print(G.image[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
+                        # centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1].shape)
+                #extract reference and deformed subset pixel intensity values
+                f = F.image[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
+                        centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
+                g = G.image[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
+                        centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
 
-        #extract reference and deformed subset pixel intensity values
-        f = F.image[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
-                centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
-        g = G.image[centery-int(0.5*(F.sub_size-1)):centery+int(0.5*(F.sub_size-1))+1,
-                centerx-int(0.5*(F.sub_size-1)):centerx+int(0.5*(F.sub_size-1))+1]
+                #normalised cross power spectrum
+                cross_power_spec = np.fft.fft2(f)*np.fft.fft2(g).conj()/abs(np.fft.fft2(f)*np.fft.fft2(g).conj())
+                #find max CC in frequency domain
+                corr_coeff = abs(np.fft.ifft2(cross_power_spec))
+                max_CC_index = np.where(corr_coeff == np.max(corr_coeff[:]))
 
-        #normalised cross power spectrum
-        cross_power_spec = np.fft.fft2(f)*np.fft.fft2(g).conj()/abs(np.fft.fft2(f)*np.fft.fft2(g).conj())
-        #find max CC in frequency domain
-        corr_coeff = abs(np.fft.ifft2(cross_power_spec))
-        max_CC_index = np.where(corr_coeff == np.max(corr_coeff[:]))
-
-        #fourier shift subset coordinates
-        index_shift = -1*np.fft.ifftshift(np.array([np.linspace(-np.fix(sub_size/2),
-                                                                math.ceil(sub_size/2)-1,
-                                                                num=sub_size)]))
-        #find displacements based on index positions
-        u0[0,i] = index_shift[0,max_CC_index[1]]
-        v0[0,i] = index_shift[0,max_CC_index[0]]
-
+                #fourier shift subset coordinates
+                index_shift = -1*np.fft.ifftshift(np.array([np.linspace(-np.fix(sub_size/2),
+                                                                        math.ceil(sub_size/2)-1,
+                                                                        num=sub_size)]))
+                #find displacements based on index positions
+                u0[0,i] = index_shift[0,max_CC_index[1]]
+                v0[0,i] = index_shift[0,max_CC_index[0]]
+        
     return u0, v0
 
 
@@ -860,12 +863,10 @@ def EstimateDisplacementsORB(F, G):
     ORB feature detector and iteratively reweighted least squares (IRLS).
     
     Determine vectors u0, v0: approximate displacement of all subset centers 
-
     Parameters
     ----------
         F       : Reference image object
         G       : Deformed image object
-
     Returns
     -------
         u0      : Approximate X displacement of subset center
@@ -931,15 +932,12 @@ def FastInterpolation(image):
     """2D structured Interpolation function
     
     Convert image to a continous domain to retrieve sub-pixel intensity values
-
     https://github.com/dbstein/fast_interp
-
     Parameters
     ----------
         image                   : image over which to interpolate
         k                       : order of interpolation function
         (internal parameter)
-
     Returns
     -------
         image_interpolated      : Relative x coordinates within subsets
@@ -958,16 +956,13 @@ def FastInterpolation(image):
 ##-------------------------------------------------------------------------------------
 def NonLinearTrans(G, i):
     """Deform the subset using a Non-Linear polynomial transformation
-
     Deform the subset using NL transformation coefficients/ shape function
     parameters (SFP's) of the current iteration.
-
     Parameters
     ----------
         G               : Deformed image object
         i               : Index specifying the XY coordinates of the deformed
                           subset center
-
     Returns
     -------
         deformed_subset : Deformation of subset at all xy (relative subset) coordinates
@@ -993,16 +988,14 @@ def NonLinearTrans(G, i):
 
 
 ##-------------------------------------------------------------------------------------
-def CorrelateImages2D(F, G, settings):
+def CorrelateImages2D(F, G, settings, invalid_sub_indices = None):
     """Perform correlation between all subsets of two images to determine the SFP's
     that describes the deformation.
-
     Parameters
     ----------
         F               : Reference image object
         G               : Deformed image object
         settings        : User settings specified in configuration file
-
     Returns
     -------
         P               : Shape function parameters at convergence (all subsets)
@@ -1016,39 +1009,42 @@ def CorrelateImages2D(F, G, settings):
 
     #correlate all subsets
     for i in range(0,N_subsets):
-        f, f_mean, f_tilde, dfdx, dfdy  = RefSubsetInfo(F,i)
-        #
-        Hess, fgrad_X_dWdP = Hessian(dfdx, dfdy, F)
-        #check SF order
-        if settings['ShapeFunctionOrder'] == 1:
-            deltaP =  np.ones([6,1])
+        if invalid_sub_indices is not None and i in invalid_sub_indices:
+            pass
         else:
-            deltaP = np.ones([12,1])
-        itera = 0
-        while itera < 100:
-            #deform square subset with linear/affine transformation
-            #based on current estimation of SFPs
+            f, f_mean, f_tilde, dfdx, dfdy  = RefSubsetInfo(F,i)
+            #
+            Hess, fgrad_X_dWdP = Hessian(dfdx, dfdy, F)
+            #check SF order
             if settings['ShapeFunctionOrder'] == 1:
-                deformed_subset = AffineTrans(G,i)
-            #NL transformation
+                deltaP =  np.ones([6,1])
             else:
-                deformed_subset = NonLinearTrans(G,i)
-            
-            #extract subset from interpolated G
-            g, g_mean, g_tilde = DefSubsetInfo(F, G, deformed_subset, i)
-            stop_val = StopCriteria(deltaP, 0.5*(G.sub_size-1))
-            if stop_val < 1e-4:
-                break 
-            else:
-                Jacobian = np.dot(fgrad_X_dWdP.T, (f[:]-f_mean-f_tilde/g_tilde*(g[:]-g_mean)))
-                deltaP = np.linalg.solve(-Hess, Jacobian) #-1*np.linalg.inv(Hess)*Jacobian.T
-                Pupdate = UpdateSFP(G.P[:,i], deltaP)
-                G.P[:,i:i+1] = Pupdate
-            itera = itera + 1
-        #Zero-Mean Normalised Cross Correlation Criteria
-        G.corr_coeff[0,i] = 1 - sum(((f[:]-f_mean)/f_tilde-(g[:]-g_mean)/g_tilde)**2)/2
-        G.stop_val[0,i] = stop_val
-        G.iterations[0,i]  = itera
+                deltaP = np.ones([12,1])
+            itera = 0
+            while itera < 100:
+                #deform square subset with linear/affine transformation
+                #based on current estimation of SFPs
+                if settings['ShapeFunctionOrder'] == 1:
+                    deformed_subset = AffineTrans(G,i)
+                #NL transformation
+                else:
+                    deformed_subset = NonLinearTrans(G,i)
+                
+                #extract subset from interpolated G
+                g, g_mean, g_tilde = DefSubsetInfo(F, G, deformed_subset, i)
+                stop_val = StopCriteria(deltaP, 0.5*(G.sub_size-1))
+                if stop_val < 1e-4:
+                    break 
+                else:
+                    Jacobian = np.dot(fgrad_X_dWdP.T, (f[:]-f_mean-f_tilde/g_tilde*(g[:]-g_mean)))
+                    deltaP = np.linalg.solve(-Hess, Jacobian) #-1*np.linalg.inv(Hess)*Jacobian.T
+                    Pupdate = UpdateSFP(G.P[:,i], deltaP)
+                    G.P[:,i:i+1] = Pupdate
+                itera = itera + 1
+            #Zero-Mean Normalised Cross Correlation Criteria
+            G.corr_coeff[0,i] = 1 - sum(((f[:]-f_mean)/f_tilde-(g[:]-g_mean)/g_tilde)**2)/2
+            G.stop_val[0,i] = stop_val
+            G.iterations[0,i]  = itera
 
 
 ##-------------------------------------------------------------------------------------
@@ -1057,11 +1053,9 @@ def LoadCameraParameters(cam_no):
     csv file are those output by running the CalibrateCamera function once.
     The csv files for the camera matrix and distortion coefficients should be loaded
     in the current working directory, or change the path of the source code below.
-
     Parameters
     ----------
         cam_no          : designation of the camera which has been calibrated
-
     Returns
     -------
         camera_matrix   : Matrix describing the camera parameters
@@ -1091,18 +1085,15 @@ def CalibrateCamera(cam_no):
     
     Load the calibration images in a folder named 'calibration_images' in the current
     working directory or modify the source code below.
-
         Parameters
         ----------
             cam_no          : Desgination of the camera to be calibrated. The designation
                               is just a number that identifies the folder number in which
                               to search for the images of the calibration plate.
-
         Returns
         -------
             camera_matrix   : Matrix describing the camera parameters
             dist_coeff      : Coefficients characterising the lens distortion
-
     """
 
     #Specify the shape and number of grid to be detected in pattern image
@@ -1197,12 +1188,10 @@ def SIFTquick(F1_ROI_padded, F1, F2):
     """Find keypoints and descriptors in the reference images of the two cameras.
     SIFT is used since it finds a dense population of keypoints in an image in comparison
     to ORB.
-
     Parameters
     ----------
         F1_ROI_padded   :   Padded region of interest in reference image of camera 1
         F1, F2          :   Reference image objects of cameras 1&2
-
     Returns
     -------
         Xk1, Xk2        :   Numpy arrays of keypoints (before matching is performed)
@@ -1212,7 +1201,6 @@ def SIFTquick(F1_ROI_padded, F1, F2):
                             (before matching is performed) 
         d1, d2          :   Descriptors of detected keypoints in reference images of
                             cameras 1&2 (cvObject)
-
     """
 
     #keypoint matching/feature detection between reference images of from both cameras
@@ -1256,10 +1244,8 @@ def SIFTquick(F1_ROI_padded, F1, F2):
 #-------------------------------------------------------------------------------------
 def KeypointMatchRobust(Xk1, Xk2, kp1, kp2, d1, d2, F1_ROI_padded, F2):
     """Perform keypoint, descriptor matching between keypoints in reference images 1&2.
-
     This function has been set up to have a high accuracy of keypoint matches and
     high computational speed.
-
     Parameters
     ----------
         Xk1, Xk2        :   Numpy arrays of keypoints before matching is performed
@@ -1269,12 +1255,10 @@ def KeypointMatchRobust(Xk1, Xk2, kp1, kp2, d1, d2, F1_ROI_padded, F2):
         F1_ROI_padded   :   Padded region of interest in reference image of camera 1
         F2              :   Reference image object of camera 2
         
-
     Returns
     -------
         Xk1, Xk2        :   Numpy arrays of matching keypoints after bad matches
                             have been eliminated
-
     """
 
 
@@ -1310,7 +1294,6 @@ def KeypointMatchRobust(Xk1, Xk2, kp1, kp2, d1, d2, F1_ROI_padded, F2):
 def kNNSubCentres(N_subsets, Xo1, Xk1, k = 20):
     """Find the k Nearest Neighbours/keypoints to the subset centres in the reference
     image of camera 1.
-
     Parameters
     ----------
         k               :   No. of nearest neighbours/keypoints in vicinity of subset
@@ -1318,13 +1301,11 @@ def kNNSubCentres(N_subsets, Xo1, Xk1, k = 20):
         N_subsets       :   Number of subsets in ROI
         Xk1             :   Keypoint coordinates in reference image of camera 1
         Xo1             :   Subset centre coordinates in reference image of camera 1
-
     Returns
     -------
         kNN_indices     :   Indices of the k nearset keypoints to each respective
                             subset centre. The indices are the IDs for keypoints in
                             the keypoints vector
-
     """
     #identify K nearest keypoints(neighbours) to each subset centre
     kNN_indices = np.zeros([N_subsets,k])
@@ -1345,19 +1326,16 @@ def MatchSubCentresProjective(F1, F2, N_subsets, Xk1, Xk2, kNN_indices):
     The coordinates of the subset centres in the first reference image need to be identified
     in the second reference image. This function determines an initial estimate of the
     relationship between the two views using an affine transformation.
-
     Parameters
     ----------
         F1              :   Reference image from first camera image series
         N_subsets       :   Number of subsets in ROI
         Xk1, Xk2        :   Keypoint coordinates in reference images of camera 1&2
         kNN_indices     :   k Nearest keypoints to each respective subset centre
-
     Returns
     -------
         P0_stereo       :   Initial estimate of affine transformation parameters describing
                             relationship between reference images of the two cameras
-
         """
     #loop through all subsets, fit projective transformation model between left and right images using RANSAC
     centers = np.zeros([F2.sub_centers.shape[0], F2.sub_centers.shape[1]])
@@ -1399,6 +1377,7 @@ def MatchSubCentresProjective(F1, F2, N_subsets, Xk1, Xk2, kNN_indices):
     
     return F2.sub_centers
 
+
 #-------------------------------------------------------------------------------------
 def FundamentalMatrixEstORB():
     """The fundamental matrix describes the relationship between any two images
@@ -1409,17 +1388,14 @@ def FundamentalMatrixEstORB():
     This function uses the reference (first/undeformed) images from the two image series
     (taken by two different cameras configured in a stereo setup) to peform the fundamental
     matrix estimation.
-
     The feature detector used here is ORB. This results in a sparse distribution of keypoints
     to be matched. Outlier keypoints are eliminated using RANSAC. For a more accurate
     estimation of the fundamental matrix a denser distribution of keypoints are recommended,
     using a feature detector such as SIFT.
  
-
         Returns
         -------
             Fu              : Fundamental matrix 
-
     """
     
     img_left = cv.imread('images/R0.tif', 0)
@@ -1461,7 +1437,6 @@ def MatchSubsetCentres(F1, F1_ROI_padded, F2):
     """Given two reference images taken from different views with their respective cameras.
     The coordinates of the subset centres in the first reference image need to be identified
     in the second reference image.
-
     Parameters
     ----------
         F1_ROI_padded   : Measurement region of interest (ROI) defined in the first reference
@@ -1469,7 +1444,6 @@ def MatchSubsetCentres(F1, F1_ROI_padded, F2):
                           relevant area for feature detection.
         F1              : Reference image from the first camera/image series
         F2              : Reference image from the second camera/image series
-
     Returns
     -------
         P0_stereo       : SFPs describing the relationship between the views of the
@@ -1493,12 +1467,11 @@ def MatchSubsetCentres(F1, F1_ROI_padded, F2):
 
 
 #-------------------------------------------------------------------------------------
-def Triangulate(Fu, Q1, Q2, X1, X2):
+def Triangulate(Fu, Q1, Q2, X1, X2, invalid_sub_indices):
     """Determine out of plane displacments through triangulation of image coordinates 
     from the two cameras in the stereo setup. In the program the function is used to 
     find the 3D coordinates of the subset centres before and after deformation, the
     displacement is the difference of this.
-
     Parameters
     ----------
         Fu              : Fundamental matrix describing the relationship of the two
@@ -1506,7 +1479,6 @@ def Triangulate(Fu, Q1, Q2, X1, X2):
         Q1, Q2          : Augmented camera matrices of Kj's (the internal camera parameter
                           matrices)
         X1, X2          : Displacement/coordinates from the two camera views
-
     Returns
     -------
        X_3D             : 3D world displacement/coordinates vector
@@ -1517,103 +1489,106 @@ def Triangulate(Fu, Q1, Q2, X1, X2):
     X_3D = np.zeros([3, N_points])
     #loop through points of interest
     for l in range(0,N_points):
-        #translation matrices, translates undistorted sensor coordinates
-        #to the origin of its coordinate system
-        T1inv = np.array([
-                            [1, 0, X1[0,l]],
-                            [0, 1, X1[1,l]],
-                            [0, 0,   1    ]
-                            ]).astype('double')
-        #
-        T2inv = np.array([
-                            [1, 0, X2[0,l]],
-                            [0, 1, X2[1,l]],
-                            [0, 0,   1    ]
-                            ]).astype('double')
-                            
-        #updated fundamental matrix
-        Fu1 = T2inv.T.dot(Fu).dot(T1inv)
-        #determine epipoles of two cameras
-        #SVD
-        U, _, V = la.svd(Fu1)
-        V = V.T
+        if l in invalid_sub_indices:
+            pass
+        else:
+            #translation matrices, translates undistorted sensor coordinates
+            #to the origin of its coordinate system
+            T1inv = np.array([
+                                [1, 0, X1[0,l]],
+                                [0, 1, X1[1,l]],
+                                [0, 0,   1    ]
+                                ]).astype('double')
+            #
+            T2inv = np.array([
+                                [1, 0, X2[0,l]],
+                                [0, 1, X2[1,l]],
+                                [0, 0,   1    ]
+                                ]).astype('double')
+                                
+            #updated fundamental matrix
+            Fu1 = T2inv.T.dot(Fu).dot(T1inv)
+            #determine epipoles of two cameras
+            #SVD
+            U, _, V = la.svd(Fu1)
+            V = V.T
 
-        #normalisation of epipoles
-        e1 = V[:,2]/la.norm(V[0:2, 2])
-        e2 = U[:,2]/la.norm(U[0:2, 2])
-        #rotation matrices, in order to place the epipoles on the x-axes
-        #of the respective coordinate systems 
-        R1 = np.array([[e1[0], e1[1], 0], [-e1[1], e1[0], 0], [0, 0, 1]])
-        R2 = np.array([[e2[0], e2[1], 0], [-e2[1], e2[0], 0], [0, 0, 1]])
-        #updated fundamental matrix
-        Fu2 = R2.dot(Fu1).dot(R1.T)
+            #normalisation of epipoles
+            e1 = V[:,2]/la.norm(V[0:2, 2])
+            e2 = U[:,2]/la.norm(U[0:2, 2])
+            #rotation matrices, in order to place the epipoles on the x-axes
+            #of the respective coordinate systems 
+            R1 = np.array([[e1[0], e1[1], 0], [-e1[1], e1[0], 0], [0, 0, 1]])
+            R2 = np.array([[e2[0], e2[1], 0], [-e2[1], e2[0], 0], [0, 0, 1]])
+            #updated fundamental matrix
+            Fu2 = R2.dot(Fu1).dot(R1.T)
 
-        #elments of fundamental matrix to be used in triangulation polynomial cost function
-        phi1 = Fu2[1,1]
-        phi2 = Fu2[1,2]
-        phi3 = Fu2[2,1]
-        phi4 = Fu2[2,2]
-        #coefficients of polynomial to be minimised
-        p = np.array([
-                        (-phi4*phi1**2*phi3*e1[2]**4 + phi2*phi1*phi3**2*e1[2]**4),
+            #elments of fundamental matrix to be used in triangulation polynomial cost function
+            phi1 = Fu2[1,1]
+            phi2 = Fu2[1,2]
+            phi3 = Fu2[2,1]
+            phi4 = Fu2[2,2]
+            #coefficients of polynomial to be minimised
+            p = np.array([
+                            (-phi4*phi1**2*phi3*e1[2]**4 + phi2*phi1*phi3**2*e1[2]**4),
 
-                        (phi1**4 + 2*phi1**2*phi3**2*e2[2]**2 - phi1**2*phi4**2*e1[2]**4 +
-                            phi2**2*phi3**2*e1[2]**4 + phi3**4*e2[2]**4),
+                            (phi1**4 + 2*phi1**2*phi3**2*e2[2]**2 - phi1**2*phi4**2*e1[2]**4 +
+                                phi2**2*phi3**2*e1[2]**4 + phi3**4*e2[2]**4),
 
-                        (4*phi1**3*phi2 - 2*phi1**2*phi3*phi4*e1[2]**2 +
-                        4*phi1**2*phi3*phi4*e2[2]**2 + 2*phi1*phi2*phi3**2*e1[2]**2 +
-                        4*phi1*phi2*phi3**2*e2[2]**2 - phi1*phi2*phi4**2*e1[2]**4 + 
-                        phi2**2*phi3*phi4*e1[2]**4 + 4*phi3**3*phi4*e2[2]**4),
+                            (4*phi1**3*phi2 - 2*phi1**2*phi3*phi4*e1[2]**2 +
+                            4*phi1**2*phi3*phi4*e2[2]**2 + 2*phi1*phi2*phi3**2*e1[2]**2 +
+                            4*phi1*phi2*phi3**2*e2[2]**2 - phi1*phi2*phi4**2*e1[2]**4 + 
+                            phi2**2*phi3*phi4*e1[2]**4 + 4*phi3**3*phi4*e2[2]**4),
 
-                        (6*phi1**2*phi2**2 - 2*phi1**2*phi4**2*e1[2]**2 + 
-                        2*phi1**2*phi4**2*e2[2]**2 + 8*phi1*phi2*phi3*phi4*e2[2]**2 + 
-                        2*phi2**2*phi3**2*e1[2]**2 + 2*phi2**2*phi3**2*e2[2]**2 +
-                        6*phi3**2*phi4**2*e2[2]**4),
+                            (6*phi1**2*phi2**2 - 2*phi1**2*phi4**2*e1[2]**2 + 
+                            2*phi1**2*phi4**2*e2[2]**2 + 8*phi1*phi2*phi3*phi4*e2[2]**2 + 
+                            2*phi2**2*phi3**2*e1[2]**2 + 2*phi2**2*phi3**2*e2[2]**2 +
+                            6*phi3**2*phi4**2*e2[2]**4),
 
-                        (-phi1**2*phi3*phi4 + 4*phi1*phi2**3 + phi1*phi2*phi3**2 - 
-                        2*phi1*phi2*phi4**2*e1[2]**2 + 4*phi1*phi2*phi4**2*e2[2]**2 + 
-                        2*phi2**2*phi3*phi4*e1[2]**2 + 4*phi2**2*phi3*phi4*e2[2]**2 +
-                        4*phi3*phi4**3*e2[2]**4),
+                            (-phi1**2*phi3*phi4 + 4*phi1*phi2**3 + phi1*phi2*phi3**2 - 
+                            2*phi1*phi2*phi4**2*e1[2]**2 + 4*phi1*phi2*phi4**2*e2[2]**2 + 
+                            2*phi2**2*phi3*phi4*e1[2]**2 + 4*phi2**2*phi3*phi4*e2[2]**2 +
+                            4*phi3*phi4**3*e2[2]**4),
 
-                        (-phi1**2*phi4**2 + phi2**4 + phi2**2*phi3**2 + 
-                        2*phi2**2*phi4**2*e2[2]**2 + phi4**4*e2[2]**4),
+                            (-phi1**2*phi4**2 + phi2**4 + phi2**2*phi3**2 + 
+                            2*phi2**2*phi4**2*e2[2]**2 + phi4**4*e2[2]**4),
 
-                        (phi3*phi2**2*phi4 - phi1*phi2*phi4**2)   
-                    ])
+                            (phi3*phi2**2*phi4 - phi1*phi2*phi4**2)   
+                        ])
 
-        #roots of the polynomial, coefficients stored in p
-        p_roots = np.roots(p)
-        #keep roots with no imaginary part
-        p_roots = p_roots[p_roots.imag == 0]
-        p_roots = p_roots.real
+            #roots of the polynomial, coefficients stored in p
+            p_roots = np.roots(p)
+            #keep roots with no imaginary part
+            p_roots = p_roots[p_roots.imag == 0]
+            p_roots = p_roots.real
 
-        #geometric error cost function to be minimised
-        #evlatuated 
-        Ds = p_roots**2/(1+(p_roots*e1[2])**2) + (phi3*p_roots + phi4)**2/((phi1*p_roots + phi2)**2 +e2[2]**2*(phi3*p_roots + phi4)**2)
-        #optimal value
-        t  = np.min(Ds)
-        #sensor coordinates converted back to euclidian space, 
-        #in original sensor coordinate system
-        X1_ = T1inv.dot(R1.T).dot(np.array([[t**2*e1[2]], [t], [t**2*e1[2]**2 + 1]]))
-        X2_ = T2inv.dot(R2.T).dot(np.array([[e2[2]*(phi3*t + phi4)**2],
-                                    [-(phi1*t + phi2)*(phi3*t + phi4)],
-                                    [(phi1*t + phi2)**2 + e2[2]**2*(phi3*t + phi4)**2]]))
+            #geometric error cost function to be minimised
+            #evlatuated 
+            Ds = p_roots**2/(1+(p_roots*e1[2])**2) + (phi3*p_roots + phi4)**2/((phi1*p_roots + phi2)**2 +e2[2]**2*(phi3*p_roots + phi4)**2)
+            #optimal value
+            t  = np.min(Ds)
+            #sensor coordinates converted back to euclidian space, 
+            #in original sensor coordinate system
+            X1_ = T1inv.dot(R1.T).dot(np.array([[t**2*e1[2]], [t], [t**2*e1[2]**2 + 1]]))
+            X2_ = T2inv.dot(R2.T).dot(np.array([[e2[2]*(phi3*t + phi4)**2],
+                                        [-(phi1*t + phi2)*(phi3*t + phi4)],
+                                        [(phi1*t + phi2)**2 + e2[2]**2*(phi3*t + phi4)**2]]))
 
-        #removal of scaling variable applied for homogeneous coordinates
-        X1_out = X1_[0:2]/X1_[2]
-        X2_out = X2_[0:2]/X2_[2]
-        #matrix to decompose below
-        S = np.array([X1_out[0][0]*Q1[2,:] - Q1[0,:],
-                            X1_out[1][0]*Q1[2,:] - Q1[1,:],
-                            X2_out[0][0]*Q2[2,:] - Q2[0,:],
-                            X2_out[1][0]*Q2[2,:] - Q2[1,:]])
+            #removal of scaling variable applied for homogeneous coordinates
+            X1_out = X1_[0:2]/X1_[2]
+            X2_out = X2_[0:2]/X2_[2]
+            #matrix to decompose below
+            S = np.array([X1_out[0][0]*Q1[2,:] - Q1[0,:],
+                                X1_out[1][0]*Q1[2,:] - Q1[1,:],
+                                X2_out[0][0]*Q2[2,:] - Q2[0,:],
+                                X2_out[1][0]*Q2[2,:] - Q2[1,:]])
 
-        #SVD
-        _, _, V = la.svd(S)
-        V = V.T
+            #SVD
+            _, _, V = la.svd(S)
+            V = V.T
 
-        #world coordinates
-        X_3D[:, l] = V[0:3,3]/V[3,3]
+            #world coordinates
+            X_3D[:, l] = V[0:3,3]/V[3,3]
 
     return X_3D
 
@@ -1622,14 +1597,12 @@ def Triangulate(Fu, Q1, Q2, X1, X2):
 def UndistortPoints(X, camera_matrix, dist_coeff):
     """Undistort subset centre coordinates from ideal sensor coordinate system to real/
     undistorted sensor coordinate system.
-
     Parameters
     ----------
         X                 : Displacement vector in ideal camera coordinate system
         camera_matrix(K)  : Internal camera parameter matrix determined by calibration
         dist_coeff        : Distortion coefficients of camera system determined
                             by calibration
-
     Returns
     -------
         X_undistorted      : Undistorted displacements in camera coordinate system
@@ -1748,25 +1721,23 @@ def RelativeCameraPose(E):
 
     pass
 
+
 #-------------------------------------------------------------------------------------
 def MatchSubCentresAffine(F1, N_subsets, Xk1, Xk2, kNN_indices):
     """Given two reference images taken from different views with their respective cameras.
     The coordinates of the subset centres in the first reference image need to be identified
     in the second reference image. This function determines an initial estimate of the
     relationship between the two views using an affine transformation.
-
     Parameters
     ----------
         F1              :   Reference image from first camera image series
         N_subsets       :   Number of subsets in ROI
         Xk1, Xk2        :   Keypoint coordinates in reference images of camera 1&2
         kNN_indices     :   k Nearest keypoints to each respective subset centre
-
     Returns
     -------
         P0_stereo       :   Initial estimate of affine transformation parameters describing
                             relationship between reference images of the two cameras
-
         """
     #loop through all subsets, fit affine model between left and right images using RANSAC
     P0_stereo = np.zeros([F1.P.shape[0], F1.P.shape[1]])
@@ -1809,9 +1780,6 @@ def MatchSubCentresAffine(F1, N_subsets, Xk1, Xk2, kNN_indices):
         P0_stereo[:, j] = u, ux, uy, uxx, uxy, uyy, v, vx, vy, vxx, vxy, vyy
     
     return P0_stereo
-
-
-
 
 
 
