@@ -1,12 +1,5 @@
 CURRENTLY CONFIGURING LIBRARY
 
-Library dependencies:
-
-numpy
-matplotlib
-opencv
-
-
 Current Functionality:
 
 local-DIC for planar displacements (lucas-kanade)
