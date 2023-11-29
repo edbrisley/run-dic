@@ -6,7 +6,7 @@ Current Functionality:
 - stereo-DIC for depth estimation
 - strain computation
 
-Refactoing in progress:
+Refactoring in progress:
 
 - global-DIC for planar displacements (FE-based)
 - camera calibration (3D object)
