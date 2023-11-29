@@ -6,9 +6,10 @@ local-DIC for planar displacements (lucas-kanade)
 stereo-DIC for depth estimation
 strain computation
 
-In progress:
+Refactoing in progress:
 
 global-DIC for planar displacements (FE-based)
 documentation
 unit tests
 
+Download all files in workspace to run strain study example
