@@ -1,0 +1,9 @@
+scipy
+numpy
+opencv
+numba
+scikit-image
+
+
+
+
