@@ -11,7 +11,6 @@ Current Functionality:
 Refactoring in progress:
 
 - global-DIC for planar displacements (FE-based)
-- camera calibration (3D object)
 - documentation
 - unit tests
 
