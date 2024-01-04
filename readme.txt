@@ -5,6 +5,8 @@ Current Functionality:
 - local-DIC for planar displacements (lucas-kanade)
 - stereo-DIC for depth estimation
 - strain computation
+- global DIC
+- implicit calibration (3D object, no distortion correction)
 
 Refactoring in progress:
 
