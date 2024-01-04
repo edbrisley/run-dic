@@ -1,5 +1,3 @@
-import rundic as rd
-
 import numpy as np
 from fast_interp import interp2d
 import cv2 as cv
@@ -10,7 +8,7 @@ import scipy.sparse.linalg as splalg
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 from operator import itemgetter
-#
+#/
 def FastInterpolation(image):
 
     #image coordinates
@@ -20,7 +18,7 @@ def FastInterpolation(image):
         #interpolation
     image_interpolated = interp2d([0,0], [ny-1,nx-1], [1,1], image, k=3, p=[False,False], e=[1,0])
     return image_interpolated
-#
+#/
 def Q8RectangularMesh(el_size, ROIcoords, N_q):
     """Updated Q8 element mesher for rectangular ROI"""
     #-------------------------------------------------------------------------------------
@@ -97,7 +95,7 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
 
     #return node_coords, element_conn, dof, N_dof, N_elements, N_ip, N_nodes
     return None
-#
+#/
 def Q4RectangularMesh(el_size,  ROIcoords, N_q):
     "FE mesh for Q4 element type"
 
@@ -152,7 +150,7 @@ def Q4RectangularMesh(el_size,  ROIcoords, N_q):
 
     #return node_coords, element_conn, dof, N_dof, N_elements, N_ip, N_nodes
     return None   
-#
+#/
 def Q8SFMatrix(xi_eta, w2):
     
     #shape function matrix
@@ -219,7 +217,7 @@ def Q8SFMatrix(xi_eta, w2):
     Neta[:, 7] = N8eta
 
     return [N, Nxi, Neta, w2]
-#
+#/
 def Q4SFMatrix(xi_eta, W2):
 
     #element shape function matrix
@@ -256,3 +254,60 @@ def Q4SFMatrix(xi_eta, W2):
     dNdeta[:, 3] = dN4deta
 
     return [N, dNdxsi, dNdeta, W2]
+#/
+def SumSquaredDifferences(dudx, dudy, dvdx, dvdy, s):
+
+    #area scaling factor stored in diagonal vector
+    s = sp.sparse.diags(s)
+
+    L = (dudx.T@s@dudx +
+        dvdy.T@s@dvdy +
+        dudy.T@s@dudy +
+        dvdx.T@s@dvdx)
+
+    return L
+#/
+def Hessian(x_vector, y_vector, F_interp, N_global_x, N_global_y, wdetj):
+
+    Xs = x_vector
+    Ys = y_vector
+
+    f = np.array([F_interp(Ys, Xs)]).T
+    f_mean = f.mean()
+    f_tilde = np.sqrt(np.sum((f[:]-f_mean)**2))
+    
+    dfdx = np.array([dFdX_interp(Ys, Xs)]).T
+    dfdy = np.array([dFdY_interp(Ys, Xs)]).T
+
+    J = (
+            sp.sparse.diags(np.squeeze(dfdx))@N_global_x
+            + sp.sparse.diags(np.squeeze(dfdy))@N_global_y )
+
+    w_J = sp.sparse.diags(wdetj)@J
+    
+    H = np.dot(J.T, w_J)
+
+    return [H, f, f_mean, f_tilde, J]
+#/
+def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, U):
+    
+    x, y = x_vector + N_global_x@U, y_vector + N_global_y@U
+    
+    #reference image data
+    f = F_data[1]
+    f_mean = F_data[2]
+    f_tilde = F_data[3]
+    J = F_data[4]
+
+    #sample intensities from deformed image data
+    g = np.array([G_interp(y, x)]).T
+    g_mean = g.mean()
+    g_tilde = np.sqrt(np.sum((g[:]-g_mean)**2))
+   
+    #compute the residual for the current iteration of the node displacments
+    res = (f[:]-f_mean-(f_tilde/g_tilde)*(g[:]-g_mean))
+    B = J.T@res
+    b = B[:, 0]
+
+    return b, res
+#/
