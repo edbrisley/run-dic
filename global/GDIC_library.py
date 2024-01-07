@@ -3,7 +3,6 @@ from fast_interp import interp2d
 import cv2 as cv
 import scipy as sp
 from numpy import copy
-from fast_interp import interp2d
 import scipy.sparse.linalg as splalg
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
@@ -255,7 +254,7 @@ def Q4SFMatrix(xi_eta, W2):
 
     return [N, dNdxsi, dNdeta, W2]
 #/
-def SumSquaredDifferences(dudx, dudy, dvdx, dvdy, s):
+def SumSquaredDisplacementGradients(dudx, dudy, dvdx, dvdy, s):
 
     #area scaling factor stored in diagonal vector
     s = sp.sparse.diags(s)
@@ -289,9 +288,10 @@ def Hessian(x_vector, y_vector, F_interp, N_global_x, N_global_y, wdetj):
 
     return [H, f, f_mean, f_tilde, J]
 #/
-def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, U):
+def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, d):
     
-    x, y = x_vector + N_global_x@U, y_vector + N_global_y@U
+    #global image coordinates for the deformed image sampling points
+    x, y = x_vector + N_global_x@d, y_vector + N_global_y@d
     
     #reference image data
     f = F_data[1]
@@ -304,21 +304,23 @@ def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, U):
     g_mean = g.mean()
     g_tilde = np.sqrt(np.sum((g[:]-g_mean)**2))
    
-    #compute the residual for the current iteration of the node displacments
+    #compute the zero normalised residual for the current iteration of the node displacments
     res = (f[:]-f_mean-(f_tilde/g_tilde)*(g[:]-g_mean))
     B = J.T@res
     b = B[:, 0]
 
     return b, res
 #/
-def InitSubMesh(n_ip, n_sf):
+def InitMeshEntries(mesh, n_ip, n_sf):
 
-    wdetJj = np.zeros(n_ip)
-    rowj = np.zeros(n_ip*n_sf, dtype=int)
-    colj = np.zeros(n_ip*n_sf, dtype=int)
-    Nj = np.zeros(n_ip*n_sf)
-    d_d_dx_j = np.zeros(n_ip*n_sf)
-    d_d_dy_j = np.zeros(n_ip*n_sf)
+    mesh['wdetJj'] = np.zeros(n_ip)
+    mesh['rowj'] = np.zeros(n_ip*n_sf, dtype=int)
+    mesh['colj'] = np.zeros(n_ip*n_sf, dtype=int)
+    mesh['Nj'] = np.zeros(n_ip*n_sf)
+    mesh['d_d_dx_j'] = np.zeros(n_ip*n_sf)
+    mesh['d_d_dy_j'] = np.zeros(n_ip*n_sf)
+
+    return None
 #/
 def FieldGradients(N, xn, yn, el_i):
     
@@ -346,3 +348,4 @@ def FieldGradients(N, xn, yn, el_i):
     dphidy = Ga21*Nxi + Ga22*Neta
 
     return dphidx, dphidy, detj
+#/
