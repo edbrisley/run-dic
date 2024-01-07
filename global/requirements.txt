@@ -1,0 +1,7 @@
+numpy
+opencv
+scipy
+
+(external)
+fast_interp
+GQ
