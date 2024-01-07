@@ -259,12 +259,12 @@ def SumSquaredDisplacementGradients(dudx, dudy, dvdx, dvdy, s):
     #area scaling factor stored in diagonal vector
     s = sp.sparse.diags(s)
 
-    L = (dudx.T@s@dudx +
+    Ti = (dudx.T@s@dudx +
         dvdy.T@s@dvdy +
         dudy.T@s@dudy +
         dvdx.T@s@dvdx)
 
-    return L
+    return Ti
 #/
 def Hessian(x_vector, y_vector, F_interp, N_global_x, N_global_y, wdetj):
 
