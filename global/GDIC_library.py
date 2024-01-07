@@ -39,7 +39,7 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     #mesh 
     N_elements = int(((N_node_rows -1)/2)*((N_node_cols-1)/2))
     N_nodes = (N_node_cols*N_node_rows - N_elements)
-    N_ip = N_q*N_elements #hardcoded for 9PQ
+    n_ip = N_q*N_elements #hardcoded for 9PQ
     N_dof = int(2*N_nodes)
     
     #element connectivity table sub-funcion
@@ -91,9 +91,9 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     mesh['DOFIndices'] = dof
     mesh['n_Nodes'] = N_nodes
     mesh['n_Elements'] = N_elements
-    mesh['n_IP'] = n_IP
+    mesh['n_ip'] = n_ip
 
-    #return node_coords, element_conn, dof, N_dof, N_elements, N_ip, N_nodes
+    #return node_coords, element_conn, dof, N_dof, N_elements, n_ip, N_nodes
     return None
 #/
 def Q4RectangularMesh(el_size,  ROIcoords, N_q):
@@ -138,7 +138,7 @@ def Q4RectangularMesh(el_size,  ROIcoords, N_q):
     dof = np.arange(N_nodes)
     dof = np.c_[dof, dof + N_nodes*(dof>=0)]
     N_dof = 2*N_nodes
-    N_ip = N_q*N_elements
+    n_ip = N_q*N_elements
 
     mesh = dict()
     mesh['NodeCoordinates'] = node_coords
@@ -146,9 +146,9 @@ def Q4RectangularMesh(el_size,  ROIcoords, N_q):
     mesh['DOFIndices'] = dof
     mesh['n_Nodes'] = N_nodes
     mesh['n_Elements'] = N_elements
-    mesh['n_IP'] = n_IP
+    mesh['n_ip'] = n_ip
 
-    #return node_coords, element_conn, dof, N_dof, N_elements, N_ip, N_nodes
+    #return node_coords, element_conn, dof, N_dof, N_elements, n_ip, N_nodes
     return None   
 #/
 def Q8SFMatrix(xi_eta, w2):
@@ -311,3 +311,38 @@ def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, U):
 
     return b, res
 #/
+def InitSubMesh(n_ip, n_sf):
+
+    wdetJj = np.zeros(n_ip)
+    rowj = np.zeros(n_ip*n_sf, dtype=int)
+    colj = np.zeros(n_ip*n_sf, dtype=int)
+    Nj = np.zeros(n_ip*n_sf)
+    d_d_dx_j = np.zeros(n_ip*n_sf)
+    d_d_dy_j = np.zeros(n_ip*n_sf)
+#/
+def FieldGradients(N, xn, yn, el_i):
+    
+    N_ = N[0]
+    Nxi = N[1]
+    Neta = N[2]
+    #Jacobian matrix of the finite element formulation
+    #not to be confused with the jacobian matrix of the Gauss-Newton algorithm
+    j11 = Nxi@xn[el_i, :]
+    j12 = Nxi@yn[el_i, :]
+    j21 = Neta@xn[el_i, :]
+    j22 = Neta@yn[el_i, :]
+    detj = j11*j22 - j12*j21
+
+    #Inverse of Jacobian matrix entries
+    #Jacobian matrix inverse
+    Ga11 = (j22/detj)[:, np.newaxis]
+    Ga12 = (-j12/detj)[:, np.newaxis]
+    Ga21 = (-j21/detj)[:, np.newaxis]
+    Ga22 = (j11/detj)[:, np.newaxis]
+    
+    #field derivatives w.r.t x,y, where the field here is phi
+    #(see Cook et al eq 6.2.10, the {d} vector is absent here)
+    dphidx = Ga11*Nxi + Ga12*Neta
+    dphidy = Ga21*Nxi + Ga22*Neta
+
+    return dphidx, dphidy, detj
