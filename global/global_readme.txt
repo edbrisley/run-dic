@@ -1,4 +1,4 @@
-8Global DIC library
+Global DIC library
 
 Functionality:
 
