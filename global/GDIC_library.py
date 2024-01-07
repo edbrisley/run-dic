@@ -7,6 +7,7 @@ import scipy.sparse.linalg as splalg
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 from operator import itemgetter
+import GQ_rosettacode_Python3 as gq
 #/
 def FastInterpolation(image):
 
@@ -36,10 +37,10 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     N_node_cols = dummy_node_grid[0].shape[1]
     
     #mesh 
-    N_elements = int(((N_node_rows -1)/2)*((N_node_cols-1)/2))
-    N_nodes = (N_node_cols*N_node_rows - N_elements)
-    n_ip = N_q*N_elements #hardcoded for 9PQ
-    N_dof = int(2*N_nodes)
+    n_elements = int(((N_node_rows -1)/2)*((N_node_cols-1)/2))
+    n_nodes = (N_node_cols*N_node_rows - n_elements)
+    n_ip = N_q*n_elements #hardcoded for 9PQ
+    N_dof = int(2*n_nodes)
     
     #element connectivity table sub-funcion
     #node numbers of first element in mesh
@@ -52,7 +53,7 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
                     2+(3*N_node_rows-1)/2,
                     N_node_rows])
     #Q8 element connectivity table
-    element_conn = np.zeros([N_elements, 8]).astype(int)
+    element_conn = np.zeros([n_elements, 8]).astype(int)
     start = 0
     for col in range(0, int((N_node_cols-1)/2)):
         for row in range(0, int((N_node_rows-1)/2)):
@@ -62,7 +63,7 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
         el1 = el1 + (1+(3*N_node_rows-1)/2)
     
     #node coordinates sub-function
-    node_coords = np.zeros([N_nodes, 2])
+    node_coords = np.zeros([n_nodes, 2])
     y_odd = np.arange(y_start, y_end, (el_size-1))
     row_start = 0
     col_start = 0
@@ -79,8 +80,8 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
             row_start = int(row_start + (N_node_rows-1)/2 + 1)
     
     #concatenate x-dofs and y-dofs
-    x_dofs = np.array(np.arange(N_nodes))
-    y_dofs = np.array(N_nodes + np.arange(N_nodes))
+    x_dofs = np.array(np.arange(n_nodes))
+    y_dofs = np.array(n_nodes + np.arange(n_nodes))
     dof = np.vstack(( x_dofs,
                       y_dofs )).T
     
@@ -88,11 +89,11 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     mesh['NodeCoordinates'] = node_coords
     mesh['ElementConnectivity'] = element_conn
     mesh['DOFIndices'] = dof
-    mesh['n_Nodes'] = N_nodes
-    mesh['n_Elements'] = N_elements
+    mesh['n_Nodes'] = n_nodes
+    mesh['n_Elements'] = n_elements
     mesh['n_ip'] = n_ip
 
-    #return node_coords, element_conn, dof, N_dof, N_elements, n_ip, N_nodes
+    #return node_coords, element_conn, dof, N_dof, n_elements, n_ip, n_nodes
     return None
 #/
 def Q4RectangularMesh(el_size,  ROIcoords, N_q):
@@ -111,21 +112,21 @@ def Q4RectangularMesh(el_size,  ROIcoords, N_q):
     #count the number of rows and columns in the mesh
     N_node_rows = nodes_y.shape[0]
     N_node_cols = nodes_y.shape[1]
-    N_elements = (N_node_cols-1)*(N_node_rows-1)
+    n_elements = (N_node_cols-1)*(N_node_rows-1)
 
     #vectors
     node_coords = np.vstack((np.array([nodes_x.flatten(order = 'F')]), np.array([nodes_y.flatten(order = 'F')])))
-    N_nodes = node_coords.shape[1]
+    n_nodes = node_coords.shape[1]
     #nodes xy coordinates
     node_coords= node_coords.T
 
     #define the node numbers as they appear in the mesh
-    mesh_node_no = np.arange(0, N_nodes).reshape(N_node_rows,
+    mesh_node_no = np.arange(0, n_nodes).reshape(N_node_rows,
                                                 N_node_cols,
                                                 order = 'F')
     
     #element connectivity table
-    element_conn = np.zeros([N_elements, 4]).astype(int)
+    element_conn = np.zeros([n_elements, 4]).astype(int)
     l = 0
     for j in range(0, N_node_cols - 1):
         #rows
@@ -134,20 +135,20 @@ def Q4RectangularMesh(el_size,  ROIcoords, N_q):
             l = l + 1
     
     #CONNECTIVITY (in ICGN script)
-    dof = np.arange(N_nodes)
-    dof = np.c_[dof, dof + N_nodes*(dof>=0)]
-    N_dof = 2*N_nodes
-    n_ip = N_q*N_elements
+    dof = np.arange(n_nodes)
+    dof = np.c_[dof, dof + n_nodes*(dof>=0)]
+    N_dof = 2*n_nodes
+    n_ip = N_q*n_elements
 
     mesh = dict()
     mesh['NodeCoordinates'] = node_coords
     mesh['ElementConnectivity'] = element_conn
     mesh['DOFIndices'] = dof
-    mesh['n_Nodes'] = N_nodes
-    mesh['n_Elements'] = N_elements
+    mesh['n_Nodes'] = n_nodes
+    mesh['n_Elements'] = n_elements
     mesh['n_ip'] = n_ip
 
-    #return node_coords, element_conn, dof, N_dof, N_elements, n_ip, N_nodes
+    #return node_coords, element_conn, dof, N_dof, n_elements, n_ip, n_nodes
     return None   
 #/
 def Q8SFMatrix(xi_eta, w2):
@@ -324,9 +325,11 @@ def InitMeshEntries(mesh, n_ip, n_sf):
 #/
 def FieldGradients(N, xn, yn, el_i):
     
+    #extract shape function matrix data
     N_ = N[0]
     Nxi = N[1]
     Neta = N[2]
+
     #Jacobian matrix of the finite element formulation
     #not to be confused with the jacobian matrix of the Gauss-Newton algorithm
     j11 = Nxi@xn[el_i, :]
@@ -349,3 +352,10 @@ def FieldGradients(N, xn, yn, el_i):
 
     return dphidx, dphidy, detj
 #/
+def GaussQuadrature2D(order):
+
+    xsi_eta, w2 = gq.ExportGQrundic(order)
+
+    return xsi_eta, w2
+
+
