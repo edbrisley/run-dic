@@ -255,53 +255,60 @@ def Q4SFMatrix(xi_eta, W2):
 
     return [N, dNdxsi, dNdeta, W2]
 #/
-def SumSquaredDisplacementGradients(dudx, dudy, dvdx, dvdy, s):
+def SumSquaredDisplacementGradients(data, m):
 
     #area scaling factor stored in diagonal vector
-    s = sp.sparse.diags(s)
+    #moving from original to natural coordinate systems
+    s = sp.sparse.diags(m['wdetj'])
 
-    Ti = (dudx.T@s@dudx +
-        dvdy.T@s@dvdy +
-        dudy.T@s@dudy +
-        dvdx.T@s@dvdx)
+    Ti = (m['dudx'].T@s@m['dudx'] +
+        m['dvdy'].T@s@m['dvdy'] +
+        m['dudy'].T@s@m['dudy'] +
+        m['dvdx'].T@s@m['dvdx'])
+    
+    m['Ti'] = Ti
 
-    return Ti
+    return None
 #/
-def Hessian(x_vector, y_vector, F_interp, N_global_x, N_global_y, wdetj):
+def Hessian(m, data):
 
-    Xs = x_vector
-    Ys = y_vector
+    #sampling point x coordinates
+    Xs = m['x_vector']
+    #sampling point x coordinates
+    Ys = m['y_vector']
 
-    f = np.array([F_interp(Ys, Xs)]).T
+    f = np.array([data['F_interp'](Ys, Xs)]).T
     f_mean = f.mean()
     f_tilde = np.sqrt(np.sum((f[:]-f_mean)**2))
     
-    dfdx = np.array([dFdX_interp(Ys, Xs)]).T
-    dfdy = np.array([dFdY_interp(Ys, Xs)]).T
-
+    dfdy = np.array([data['dFdY'](Ys, Xs)]).T
+    dfdx = np.array([data['dFdX'](Ys, Xs)]).T
+    
     J = (
-            sp.sparse.diags(np.squeeze(dfdx))@N_global_x
-            + sp.sparse.diags(np.squeeze(dfdy))@N_global_y )
+            sp.sparse.diags(np.squeeze(dfdx))@m['N_global_x']
+            + sp.sparse.diags(np.squeeze(dfdy))@m['N_global_y'] )
 
-    w_J = sp.sparse.diags(wdetj)@J
+    w_J = sp.sparse.diags(m['wdetj'])@J
     
     H = np.dot(J.T, w_J)
 
-    return [H, f, f_mean, f_tilde, J]
+    data['H'], data['J'], data['f'], data['f_mean'], data['f_tilde'] = H, J, f, f_mean, f_tilde
+
+    return None
 #/
-def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, d):
+def Residual(m, data, d):
     
     #global image coordinates for the deformed image sampling points
-    x, y = x_vector + N_global_x@d, y_vector + N_global_y@d
+    x, y = m['x_vector'] + m['N_global_x']@d, m['y_vector'] + m['N_global_y']@d
     
     #reference image data
-    f = F_data[1]
-    f_mean = F_data[2]
-    f_tilde = F_data[3]
-    J = F_data[4]
+    f = data['f']
+    f_mean = data['f_mean']
+    f_tilde = data['f_tilde']
+    J = data['J']
 
     #sample intensities from deformed image data
-    g = np.array([G_interp(y, x)]).T
+    g = np.array([data['G_interp'](y, x)]).T
     g_mean = g.mean()
     g_tilde = np.sqrt(np.sum((g[:]-g_mean)**2))
    
@@ -312,30 +319,35 @@ def Residual(F_data, G_interp, x_vector, N_global_x, y_vector, N_global_y, d):
 
     return b, res
 #/
-def InitMeshEntries(mesh, n_ip, n_sf):
+def InitMeshEntries(mesh):
 
-    mesh['wdetJj'] = np.zeros(n_ip)
+    #initialize global arrays
+    n_ip, n_sf = mesh['n_ip'], mesh['n_sf']
+
+    mesh['wdetj_j'] = np.zeros(n_ip)
     mesh['rowj'] = np.zeros(n_ip*n_sf, dtype=int)
     mesh['colj'] = np.zeros(n_ip*n_sf, dtype=int)
     mesh['Nj'] = np.zeros(n_ip*n_sf)
-    mesh['d_d_dx_j'] = np.zeros(n_ip*n_sf)
-    mesh['d_d_dy_j'] = np.zeros(n_ip*n_sf)
+    #the 2D-displacment field is referred to here as phi.. phi = [u, v]
+    mesh['dphidx_j'] = np.zeros(n_ip*n_sf)
+    mesh['dphidy_j'] = np.zeros(n_ip*n_sf)
 
+    #mesh dictionary is passed by reference
     return None
 #/
-def FieldGradients(N, xn, yn, el_i):
+def FieldGradients(m, el_i):
     
     #extract shape function matrix data
-    N_ = N[0]
-    Nxi = N[1]
-    Neta = N[2]
+    N_ = m['N'][0]
+    Nxi = m['N'][1]
+    Neta = m['N'][2]
 
     #Jacobian matrix of the finite element formulation
     #not to be confused with the jacobian matrix of the Gauss-Newton algorithm
-    j11 = Nxi@xn[el_i, :]
-    j12 = Nxi@yn[el_i, :]
-    j21 = Neta@xn[el_i, :]
-    j22 = Neta@yn[el_i, :]
+    j11 = Nxi@m['xn'][el_i, :]
+    j12 = Nxi@m['yn'][el_i, :]
+    j21 = Neta@m['xn'][el_i, :]
+    j22 = Neta@m['yn'][el_i, :]
     detj = j11*j22 - j12*j21
 
     #Inverse of Jacobian matrix entries
@@ -350,6 +362,10 @@ def FieldGradients(N, xn, yn, el_i):
     dphidx = Ga11*Nxi + Ga12*Neta
     dphidy = Ga21*Nxi + Ga22*Neta
 
+    # m['dphidx'] = dphidx 
+    # m['dphidy'] = dphidy
+    # m['detj'] = detj
+
     return dphidx, dphidy, detj
 #/
 def GaussQuadrature2D(order):
@@ -357,5 +373,122 @@ def GaussQuadrature2D(order):
     xsi_eta, w2 = gq.ExportGQrundic(order)
 
     return xsi_eta, w2
+#/
+def GlobalAssembly(m):
 
+    #initialize global arrays, initialize gloabal array for single element type (SubMesh)
+    InitMeshEntries(m)
+    #assemble the indidivudal elements to the global mesh arrays
+    AssembleIndividualElements(m)
+    #Reshape/store the individual element entries to scipy sparse matrices
+    #this saves
+    ReshapetoSparse(m)
+
+    return None
+#/
+def AssembleIndividualElements(m):
+
+    index0 = 0
+    for el_i in range(m['n_elements']):
+        
+        #current element indices for assembly to global matrix
+        indices_el = index0 + np.arange(m['n_q'])
+        ind = m['n_sf']*index0 + np.arange(m['n_q']*8)
+        [el_cols, el_rows] = np.meshgrid(m['x_dofs_mesh'][el_i, :], indices_el)
+        print(el_i)
+        m['rowj'][ind] = el_rows.ravel()
+        m['colj'][ind] = el_cols.ravel()
+        m['Nj'][ind] = m['N'][0].ravel()
+
+        #displacement gradients current element
+        dphidx, dphidy, detJ = FieldGradients(m, el_i)
+        
+        #assemble derivatives to global matrix
+        m['wdetj_j'][indices_el] = m['wg']*abs(detJ)
+        m['dphidx_j'][ind] = dphidx.ravel()
+        m['dphidy_j'][ind] = dphidy.ravel()
+
+        index0 += m['n_q']
+
+    return None
+
+def ReshapetoSparse(m):
+
+    
+    N_global_x = sp.sparse.csc_matrix(
+                                        (m['N_global'], (m['row'], m['col'])),
+                                        shape=(m['n_ip'], m['n_dof']))
+    N_global_y = sp.sparse.csc_matrix(
+                                        (m['N_global'], (m['row'], m['col'] + m['n_dof']//2)),
+                                        shape=(m['n_ip'], m['n_dof']))
+    dudx = sp.sparse.csc_matrix(
+                                    (m['dphidx'], (m['row'], m['col'])),
+                                    shape=(m['n_ip'], m['n_dof']))
+    dudy = sp.sparse.csc_matrix(
+                                    (m['dphidy'], (m['row'], m['col'])),
+                                    shape=(m['n_ip'], m['n_dof']))
+    dvdx = sp.sparse.csc_matrix(
+                                    (m['dphidx'],(m['row'], m['col'] + m['n_dof']//2)),
+                                    shape=(m['n_ip'], m['n_dof']))
+    dpvdy = sp.sparse.csc_matrix(
+                                    (m['dphidy'], (m['row'], m['col'] + m['n_dof']//2)),
+                                    shape=(m['n_ip'], m['n_dof']))    
+
+    m['xcoords'] = m['node_coords'][:, 0][m['dof'][:, 0]]
+    m['ycoords'] = m['node_coords'][:, 1][m['dof'][:, 0]]
+    m['xcoords_append_ycoords'] = np.hstack((['xcoords'], m['ycoords']))
+
+    x_vector = N_global_x.dot(m['xcoords_append_ycoords'])
+    y_vector = N_global_y.dot(m['xcoords_append_ycoords'])
+
+    m['x_vector'] = x_vector
+    m['y_vector'] = y_vector
+    m['x_vector'] = x_vector
+    m['y_vector'] = y_vector
+
+    return None
+
+def RegularizedModifiedGN(m, data, d0):
+
+    #initial estimate of nodal displacments
+    d = copy(d0)
+    #assemble the Hessian, Jacobian matrices from the reference image data
+    Hessian(m, data)
+    #
+    SumSquaredDisplacementGradients(data, m)
+    H, alpha2, Ti = data['H'], data['alpha2'], data['Ti']
+
+    #regularize the Hessian matrix
+    H_reg = H.T@H + alpha2*Ti
+
+    #perform LU factorisation of the regularized Hessian matrix
+    #note that after regularization, much of the sparseness in the
+    #Hessian is lost, making LU a viable factorization method here
+    #it is also currenlty the only supported factorization method
+    #in the scipy sparse library (would like to try Cholesky when they add it)
+    H_LU = splalg.splu(H_reg)
+
+    #perform the NL least-squares minimization
+    #i.e solve the regularized, modified GN linear system
+    #of equations at each iteration
+    for k in range(0,100):
+
+        #compute zero-normalised residual and the right-hand-side operand
+        b, res = Residual(m, data, d)
+        
+        #compute the incremental update to the nodal
+        #displacement vector
+        delta_d = H_LU.solve(H.T@b)
+
+        #compute the euclidian difference between nodal displacements
+        #between the iterations 
+        err = np.linalg.norm((d + delta_d) - d)
+        if err<1e-3:
+            break
+        d += delta_d
+        
+        print("Iteration: {}, euclidian difference: {}".format(k, err))
+        
+
+    return d
 
