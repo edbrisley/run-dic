@@ -1,40 +1,18 @@
-##IMPORT LIBRARIESMatchStereoViews
-from tokenize import Double
 import numpy as np
 import numpy.linalg as la
 from numpy.linalg import norm
-import matplotlib.pyplot as plt
-import math
 import cv2 as cv
-from scipy.linalg import solve
-import pandas as pd
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
-import statsmodels.api as sm
-import patsy as ps
-from patsy import dmatrices
-from patsy import dmatrix
 from numpy import loadtxt
 import os
 from configparser import ConfigParser
 from fast_interp import interp2d
-import copy
-import glob
 #SKIMAGE packages
-from skimage import data
-from skimage.util import img_as_float
-from skimage.transform import warp, AffineTransform
-from skimage.transform import FundamentalMatrixTransform, ProjectiveTransform
-from skimage.exposure import rescale_intensity
+from skimage.transform import  AffineTransform
+from skimage.transform import ProjectiveTransform
 from skimage.measure import ransac
-import skimage as sk
-from skimage import data
-from skimage import transform as tf
-from skimage.feature import (match_descriptors, corner_harris,
-                             corner_peaks, ORB, plot_matches, corner_subpix)
-from skimage.color import rgb2gray
 import platform
-import GQ_rosettacode_Python3 as gq
 
 #------------------------------------------------------------------------------------
 # Versioning the library
@@ -1541,179 +1519,3 @@ def DepthFromTwoViewsCameraCS(settings, data):
     #u = U_camera[:, 0]
 
     return settings, data
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#------------------------------------------------------------------------------------
-# def GaussQuadrature2D(order):
-
-#     xsi_eta, w2 = gq.ExportGQrundic(order)
-
-#     return xsi_eta, w2
-# #    
-# def PlanarDICGlobal(settings, image_set, ROI):
-#     #measurement point coordinates defined in datum image
-#     #xsi, eta: local coordinates defined within subset(s)
-#     if settings['CameraNo'] in {0, None}:
-
-#         #load measurement point from external file
-#         if settings['ImportMeasurementPointsFromExternal'] == 'Yes':
-            
-#             #mesh parser functions come here
-#             # measurement_points = open('measurement_points.csv', 'rb')
-#             # measurement_points = loadtxt(measurement_points, delimiter = ",")
-#             # measurement_points = np.array(measurement_points)
-
-#             pass
-
-#         #should also have an option to create the mesh based on settings and
-#         #measurement point coordinates
-        
-#         #define measurement points using the settings specified in the config file 
-#         if settings['ImportMeasurementPointsFromExternal'] == 'No':
-            
-#             mesh = RectangularMeshQuadrilaterals(settings, image_set, ROI)
-#             #append the measurement points to the settings file
-#             #store measurement points for later triangulation of displacement coefficients
-#             #np.savetxt("measurement_points.csv", measurement_points, delimiter = ",")
-        
-#         #save measurement point coordinates in datum image of left camera as reference
-#         #for later use in cross correlation
-#         if settings['MeasurementType'] in {'StereoCurved', 'StereoPlanar'}:
-#             settings['MeasurementPoints_L0'] = settings['MeasurementPoints']
-#             settings['ROI_L0'] = ROI
-
-#     if settings['CorrelationReferenceStrategy'] == 'Incremental':
-#         coefficients = IncrementalLocal(settings, image_set, ROI)
-
-#     elif settings['CorrelationReferenceStrategy'] == 'Absolute':
-#         coefficients = AbsoluteReferencing(settings, image_set, ROI)
-
-#     return coefficients
-# #
-# def RectangularMeshQuadrilaterals(settings, ROI):
-
-#     element_size = settings['ElementSize']
-#     xsi_eta, w2 = GaussQuadrature2D(settings['GQOrder'])
-
-#     #default, case where the entire image should be populated with nodes
-#     if np.sum(ROI) == 0:
-#         x_origin = 0
-#         y_origin = 0
-#         x_bound = settings['ImageColumns']
-#         y_bound = settings['ImageRows']
-
-#     #case where the ROI has been manually refined 
-#     else: 
-#         x_origin = ROI[0]
-#         y_origin = ROI[1]
-#         x_bound = ROI[0] + ROI[2]
-#         y_bound = ROI[1] + ROI[3]
-
-#     if settings['ElementType'] == 'Q4':
-
-#         pass
-
-#     if settings['ElementType'] == 'Q8':
-
-#         pass
-
-#     if settings['ElementType'] == 'Q9':
-
-#         #structured grid of x and y coordinates
-#         yn, xn = np.meshgrid( np.arange(y_origin,
-#                                         y_bound,
-#                                         (element_size-1)/2),
-
-#                               np.arange(x_origin,
-#                                         x_bound,
-#                                         (element_size-1)/2),
-
-#                               indexing = 'ij')
-
-#         #number of nodes in the x and y directions
-#         n_nodes_y = yn.shape[0]
-#         n_nodes_x = xn.shape[1]
-#         n_elements = int(((n_nodes_x-1)/2)*((n_nodes_y-1)/2))
-
-#         #node XY coordinates as vectors
-#         node_coords = np.vstack(( xn.ravel(order = 'F'),
-#                                   yn.ravel(order = 'F') )).T
-#         n_nodes = node_coords.shape[0]
-
-#         #create the Q9 mesh and label the nodes
-#         #(should add function here that exports a graphic of the mesh showing
-#         #the node numbering)
-#         mesh_node_no = np.arange(0, n_nodes).reshape(n_nodes_y, n_nodes_x, order = 'F')
-        
-#         #element connectivity table
-#         element_conn = np.zeros([n_elements, 9]).astype(int)
-#         l = 0
-#         for j in range(0, int(((n_nodes_x-1)/2)) + 2, 2):
-#             #rows
-#             for i in range(0, int(((n_nodes_x-1)/2)) + 2, 2):
-
-#                 element_conn[l, :] = np.array([ mesh_node_no[i, j], mesh_node_no[i+2, j], mesh_node_no[i+2, j+2], mesh_node_no[i, j+2], 
-#                                                 mesh_node_no[i+1, j], mesh_node_no[i+2, j+1], mesh_node_no[i+1, j+2], mesh_node_no[i, j+1], mesh_node_no[i+1, j+1] ])
-#                 l = l + 1
-
-#         #number the displacement degrees of freedom
-#         dof = np.vstack(( np.array(np.arange(n_nodes)),
-#                           np.array(n_nodes + np.arange(n_nodes)) )).T
-
-#         #total number if degrees of freedom
-#         n_dof = 2*n_nodes
-
-#         #node_coords, element_conn, dof, N_dof, n_elements
-
-#     mesh = dict()
-#     mesh['NodeCoordinates'] = node_coords
-#     mesh['ElementConnectivity'] = element_conn
-#     mesh['DOFIndices'] = dof
-#     mesh['n_Nodes'] = n_nodes
-#     mesh['n_Elements'] = n_elements
-#     mesh['n_IP'] = n_IP
-#     #mesh['n_Nodes']
-    
-#     return mesh
