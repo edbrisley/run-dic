@@ -19,18 +19,95 @@ def FastInterpolation(image):
     image_interpolated = interp2d([0,0], [ny-1,nx-1], [1,1], image, k=3, p=[False,False], e=[1,0])
     return image_interpolated
 #/
-def Q8RectangularMesh(el_size, ROIcoords, N_q):
-    """Updated Q8 element mesher for rectangular ROI"""
+def ProcessImageData(F, G):
+
+    data = dict()
+
+    #reference image data, processing, interpolation
+    F_interp = FastInterpolation(F)
+    dFdY, dFdX = np.array(np.gradient(F), dtype=float)
+    dFdX_interp = FastInterpolation(dFdX)
+    dFdY_interp = FastInterpolation(dFdY)
+
+    #deformed image interpolation
+    G_interp = FastInterpolation(G)
+
+    data = dict()
+    data['F_interp'] = F_interp
+    data['dFdY'] = dFdY
+    data['dFdX'] = dFdX
+    data['dFdX_interp'] = dFdX_interp
+    data['dFdY_interp'] = dFdY_interp
+    data['G_interp'] = G_interp
+
+    return data
+#/
+def FEMesh(q_rule, el_type, el_size, alpha2, ROIcoords):
+
+    #create the mesh dictionary and the associated shape function data
+    mesh = QuadrilateralSF(q_rule, el_type, el_size, alpha2, ROIcoords)
+    #mesh shape functions together and prepare the data for global assembly
+    QuadrilateralMesh(mesh)
+    #assemble the finite elments and associated data to the global mesh
+    GlobalAssembly(mesh)
+
+    return mesh
+#/
+def QuadrilateralSF(q_rule, el_type, el_size, alpha2, ROIcoords):
+
+    mesh = dict()
+    #user-defined settings
+    mesh['el_size'] = el_size
+    mesh['alpha2'] = alpha2
+    mesh['ROIcoords'] = ROIcoords
+    mesh['el_type'] = el_type
+
+    #external call to RosettaCode library to return the
+    #interpolation point coordinates and the quadrature weights
+    xsi_eta, w2 = GaussQuadrature2D(q_rule)
+
+    #shape function matrix for a single element
+    if el_type == 'Q8':
+        N  = Q8SFMatrix(xsi_eta, w2)
+    elif el_type == 'Q4':
+        N  = Q4SFMatrix(xsi_eta, w2)
+    else:
+        print('element type not supported')
+        pass
+
+    n_sf = N[0].shape[1]
+    n_q = N[0].shape[0]
+    wg = N[3]
+
+    mesh['N'] = N
+    mesh['wg'] = wg
+    mesh['n_q'] = n_q
+    mesh['n_sf'] = n_sf
+
+    return mesh
+#/
+def QuadrilateralMesh(mesh):
+
+    if mesh['el_type'] == 'Q8':
+        Q8RectangularMesh(mesh)
+    elif mesh['el_type'] == 'Q4':
+        Q4RectangularMesh(mesh)
+    
+    return None
+#/
+def Q8RectangularMesh(m):
+
+    """Q8 mesh for rectangular region-of-interest"""
     #-------------------------------------------------------------------------------------
     #ROI boundary coordinates
-    x_start, x_end, y_start, y_end = ROIcoords[0], ROIcoords[1], ROIcoords[2], ROIcoords[3]
+    x_start, x_end, y_start, y_end = m['ROIcoords'][0], m['ROIcoords'][1], m['ROIcoords'][2], m['ROIcoords'][3]
     #dummy grid to count number of rows and columns in mesh
     dummy_node_grid = np.meshgrid(np.arange(y_start,
                                             y_end,
-                                            (el_size-1)/2),
+                                            (m['el_size']-1)/2),
                                     np.arange(x_start,
                                             x_end,
-                                            (el_size-1)/2),
+                                            (m['el_size']-1)/2),
                                             indexing = 'ij')
     #count number of rows and columns in node grid
     N_node_rows = dummy_node_grid[0].shape[0]
@@ -39,8 +116,8 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     #mesh 
     n_elements = int(((N_node_rows -1)/2)*((N_node_cols-1)/2))
     n_nodes = (N_node_cols*N_node_rows - n_elements)
-    n_ip = N_q*n_elements #hardcoded for 9PQ
-    N_dof = int(2*n_nodes)
+    n_ip = m['n_q']*n_elements 
+    n_dof = int(2*n_nodes)
     
     #element connectivity table sub-funcion
     #node numbers of first element in mesh
@@ -64,16 +141,16 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     
     #node coordinates sub-function
     node_coords = np.zeros([n_nodes, 2])
-    y_odd = np.arange(y_start, y_end, (el_size-1))
+    y_odd = np.arange(y_start, y_end, (m['el_size']-1))
     row_start = 0
     col_start = 0
     for x in range(0, N_node_cols):
         if x%2 == 0:
-            node_coords[row_start:row_start + N_node_rows, :] = np.vstack(( np.repeat(x_start + x*(el_size-1)/2, N_node_rows),
-                                                                            np.arange(y_start, y_end, (el_size-1)/2))).T
+            node_coords[row_start:row_start + N_node_rows, :] = np.vstack(( np.repeat(x_start + x*(m['el_size']-1)/2, N_node_rows),
+                                                                            np.arange(y_start, y_end, (m['el_size']-1)/2))).T
             row_start = row_start + N_node_rows
         else:
-            node_coords[row_start:row_start + int((N_node_rows-1)/2 + 1), :] = np.vstack((  np.repeat(x_start + x*(el_size-1)/2,
+            node_coords[row_start:row_start + int((N_node_rows-1)/2 + 1), :] = np.vstack((  np.repeat(x_start + x*(m['el_size']-1)/2,
                                                                                                     (N_node_rows-1)/2 + 1),
 
                                                                                             y_odd)).T
@@ -84,29 +161,38 @@ def Q8RectangularMesh(el_size, ROIcoords, N_q):
     y_dofs = np.array(n_nodes + np.arange(n_nodes))
     dof = np.vstack(( x_dofs,
                       y_dofs )).T
+
+                      #node x and y coordinates and x-dofs in mesh
+    xn = node_coords[element_conn, 0]
+    yn = node_coords[element_conn, 1]
+    x_dofs_mesh = dof[element_conn, 0]
     
-    mesh = dict()
-    mesh['NodeCoordinates'] = node_coords
-    mesh['ElementConnectivity'] = element_conn
-    mesh['DOFIndices'] = dof
-    mesh['n_Nodes'] = n_nodes
-    mesh['n_Elements'] = n_elements
-    mesh['n_ip'] = n_ip
+    m['node_coords'] = node_coords
+    m['element_conn'] = element_conn
+    m['dof'] = dof
+    m['n_nodes'] = n_nodes
+    m['n_elements'] = n_elements
+    m['n_ip'] = n_ip
+    m['n_dof'] = n_dof
+
+    m['xn'] = xn
+    m['yn'] = yn
+    m['x_dofs_mesh'] = x_dofs_mesh
 
     #return node_coords, element_conn, dof, N_dof, n_elements, n_ip, n_nodes
     return None
 #/
-def Q4RectangularMesh(el_size,  ROIcoords, N_q):
+def Q4RectangularMesh(m):
     "FE mesh for Q4 element type"
 
-    x_start, x_end, y_start, y_end = ROIcoords[0], ROIcoords[1], ROIcoords[2], ROIcoords[3]
+    x_start, x_end, y_start, y_end = m['ROIcoords'][0], m['ROIcoords'][1], m['ROIcoords'][2], m['ROIcoords'][3]
     #dummy grid to count number of rows and columns in mesh
     nodes_y, nodes_x = np.meshgrid(np.arange(y_start,
                                             y_end,
-                                            (el_size-1)/2),
+                                            (m['el_size']-1)/2),
                                     np.arange(x_start,
                                             x_end,
-                                            (el_size-1)/2),
+                                            (m['el_size']-1)/2),
                                             indexing = 'ij')
 
     #count the number of rows and columns in the mesh
@@ -134,19 +220,28 @@ def Q4RectangularMesh(el_size,  ROIcoords, N_q):
             element_conn[l, :] = np.array([mesh_node_no[i,j], mesh_node_no[i+1, j], mesh_node_no[i+1, j+1], mesh_node_no[i, j+1]])
             l = l + 1
     
-    #CONNECTIVITY (in ICGN script)
+    #connectivity
     dof = np.arange(n_nodes)
     dof = np.c_[dof, dof + n_nodes*(dof>=0)]
-    N_dof = 2*n_nodes
-    n_ip = N_q*n_elements
+    n_dof = 2*n_nodes
+    n_ip = m['n_q']*n_elements
 
-    mesh = dict()
-    mesh['NodeCoordinates'] = node_coords
-    mesh['ElementConnectivity'] = element_conn
-    mesh['DOFIndices'] = dof
-    mesh['n_Nodes'] = n_nodes
-    mesh['n_Elements'] = n_elements
-    mesh['n_ip'] = n_ip
+    #node x and y coordinates and x-dofs in mesh
+    xn = node_coords[element_conn, 0]
+    yn = node_coords[element_conn, 1]
+    x_dofs_mesh = dof[element_conn, 0]
+
+    m['node_coords'] = node_coords
+    m['element_conn'] = element_conn
+    m['dof'] = dof
+    m['n_nodes'] = n_nodes
+    m['n_elements'] = n_elements
+    m['n_ip'] = n_ip
+    m['n_dof'] = n_dof
+
+    m['xn'] = xn
+    m['yn'] = yn
+    m['x_dofs_mesh'] = x_dofs_mesh
 
     #return node_coords, element_conn, dof, N_dof, n_elements, n_ip, n_nodes
     return None   
@@ -255,16 +350,16 @@ def Q4SFMatrix(xi_eta, W2):
 
     return [N, dNdxsi, dNdeta, W2]
 #/
-def SumSquaredDisplacementGradients(data, m):
+def SumSquaredDisplacementGradients(m):
 
     #area scaling factor stored in diagonal vector
     #moving from original to natural coordinate systems
     s = sp.sparse.diags(m['wdetj'])
 
-    Ti = (m['dudx'].T@s@m['dudx'] +
-        m['dvdy'].T@s@m['dvdy'] +
-        m['dudy'].T@s@m['dudy'] +
-        m['dvdx'].T@s@m['dvdx'])
+    Ti = (m['dudx_'].T@s@m['dudx_'] +
+        m['dvdy_'].T@s@m['dvdy_'] +
+        m['dudy_'].T@s@m['dudy_'] +
+        m['dvdx_'].T@s@m['dvdx_'])
     
     m['Ti'] = Ti
 
@@ -272,17 +367,17 @@ def SumSquaredDisplacementGradients(data, m):
 #/
 def Hessian(m, data):
 
-    #sampling point x coordinates
-    Xs = m['x_vector']
-    #sampling point x coordinates
-    Ys = m['y_vector']
+    #sampling point x and y coordinates
+    Xs, Ys = m['x_vector'], m['y_vector']
 
-    f = np.array([data['F_interp'](Ys, Xs)]).T
+    F_interp, dFdY_interp, dFdX_interp = data['F_interp'], data['dFdY_interp'], data['dFdX_interp']
+
+    f = np.array([F_interp(Ys, Xs)]).T
     f_mean = f.mean()
     f_tilde = np.sqrt(np.sum((f[:]-f_mean)**2))
     
-    dfdy = np.array([data['dFdY'](Ys, Xs)]).T
-    dfdx = np.array([data['dFdX'](Ys, Xs)]).T
+    dfdy = np.array([dFdY_interp(Ys, Xs)]).T
+    dfdx = np.array([dFdX_interp(Ys, Xs)]).T
     
     J = (
             sp.sparse.diags(np.squeeze(dfdx))@m['N_global_x']
@@ -324,7 +419,7 @@ def InitMeshEntries(mesh):
     #initialize global arrays
     n_ip, n_sf = mesh['n_ip'], mesh['n_sf']
 
-    mesh['wdetj_j'] = np.zeros(n_ip)
+    mesh['wdetj'] = np.zeros(n_ip)
     mesh['rowj'] = np.zeros(n_ip*n_sf, dtype=int)
     mesh['colj'] = np.zeros(n_ip*n_sf, dtype=int)
     mesh['Nj'] = np.zeros(n_ip*n_sf)
@@ -362,8 +457,8 @@ def FieldGradients(m, el_i):
     dphidx = Ga11*Nxi + Ga12*Neta
     dphidy = Ga21*Nxi + Ga22*Neta
 
-    # m['dphidx'] = dphidx 
-    # m['dphidy'] = dphidy
+    # m['dphidx_j'] = dphidx 
+    # m['dphidy_j'] = dphidy
     # m['detj'] = detj
 
     return dphidx, dphidy, detj
@@ -395,7 +490,6 @@ def AssembleIndividualElements(m):
         indices_el = index0 + np.arange(m['n_q'])
         ind = m['n_sf']*index0 + np.arange(m['n_q']*8)
         [el_cols, el_rows] = np.meshgrid(m['x_dofs_mesh'][el_i, :], indices_el)
-        print(el_i)
         m['rowj'][ind] = el_rows.ravel()
         m['colj'][ind] = el_cols.ravel()
         m['Nj'][ind] = m['N'][0].ravel()
@@ -404,7 +498,7 @@ def AssembleIndividualElements(m):
         dphidx, dphidy, detJ = FieldGradients(m, el_i)
         
         #assemble derivatives to global matrix
-        m['wdetj_j'][indices_el] = m['wg']*abs(detJ)
+        m['wdetj'][indices_el] = m['wg']*abs(detJ)
         m['dphidx_j'][ind] = dphidx.ravel()
         m['dphidy_j'][ind] = dphidy.ravel()
 
@@ -414,37 +508,38 @@ def AssembleIndividualElements(m):
 
 def ReshapetoSparse(m):
 
-    
     N_global_x = sp.sparse.csc_matrix(
-                                        (m['N_global'], (m['row'], m['col'])),
+                                        (m['Nj'], (m['rowj'], m['colj'])),
                                         shape=(m['n_ip'], m['n_dof']))
     N_global_y = sp.sparse.csc_matrix(
-                                        (m['N_global'], (m['row'], m['col'] + m['n_dof']//2)),
+                                        (m['Nj'], (m['rowj'], m['colj'] + m['n_dof']//2)),
                                         shape=(m['n_ip'], m['n_dof']))
-    dudx = sp.sparse.csc_matrix(
-                                    (m['dphidx'], (m['row'], m['col'])),
+    dudx_ = sp.sparse.csc_matrix(
+                                    (m['dphidx_j'], (m['rowj'], m['colj'])),
                                     shape=(m['n_ip'], m['n_dof']))
-    dudy = sp.sparse.csc_matrix(
-                                    (m['dphidy'], (m['row'], m['col'])),
+    dudy_ = sp.sparse.csc_matrix(
+                                    (m['dphidy_j'], (m['rowj'], m['colj'])),
                                     shape=(m['n_ip'], m['n_dof']))
-    dvdx = sp.sparse.csc_matrix(
-                                    (m['dphidx'],(m['row'], m['col'] + m['n_dof']//2)),
+    dvdx_ = sp.sparse.csc_matrix(
+                                    (m['dphidx_j'],(m['rowj'], m['colj'] + m['n_dof']//2)),
                                     shape=(m['n_ip'], m['n_dof']))
-    dpvdy = sp.sparse.csc_matrix(
-                                    (m['dphidy'], (m['row'], m['col'] + m['n_dof']//2)),
+    dvdy_ = sp.sparse.csc_matrix(
+                                    (m['dphidy_j'], (m['rowj'], m['colj'] + m['n_dof']//2)),
                                     shape=(m['n_ip'], m['n_dof']))    
-
+    
+    #store to mesh dictionary
     m['xcoords'] = m['node_coords'][:, 0][m['dof'][:, 0]]
     m['ycoords'] = m['node_coords'][:, 1][m['dof'][:, 0]]
-    m['xcoords_append_ycoords'] = np.hstack((['xcoords'], m['ycoords']))
+    m['xcoords_append_ycoords'] = np.hstack((m['xcoords'], m['ycoords']))
 
     x_vector = N_global_x.dot(m['xcoords_append_ycoords'])
     y_vector = N_global_y.dot(m['xcoords_append_ycoords'])
 
-    m['x_vector'] = x_vector
-    m['y_vector'] = y_vector
-    m['x_vector'] = x_vector
-    m['y_vector'] = y_vector
+    m['N_global_x'] = N_global_x
+    m['N_global_y'] = N_global_y
+
+    m['dudx_'], m['dudy_'], m['dvdx_'], m['dvdy_'] = dudx_, dudy_, dvdx_, dvdy_
+    m['x_vector'], m['y_vector'], m['x_vector'], m['y_vector'] = x_vector, y_vector, x_vector, y_vector
 
     return None
 
@@ -455,9 +550,9 @@ def RegularizedModifiedGN(m, data, d0):
     #assemble the Hessian, Jacobian matrices from the reference image data
     Hessian(m, data)
     #
-    SumSquaredDisplacementGradients(data, m)
-    H, alpha2, Ti = data['H'], data['alpha2'], data['Ti']
-
+    SumSquaredDisplacementGradients(m)
+    H = data['H']
+    alpha2, Ti = m['alpha2'], m['Ti']
     #regularize the Hessian matrix
     H_reg = H.T@H + alpha2*Ti
 
