@@ -1,6 +1,6 @@
 RUN-DIC is an open-source Digital Image Correlation software system implemented in Python. It may be used for high-resolution 3D surface reconstruction from image data, 3D displacement tracking, and surface strain measurement.
 
-The figure below shows an example output for full-filed surface strain measurement:
+The figure below shows an example output for full-field surface strain measurement:
 
 ![Strain Example](https://github.com/edbrisley/run-dic/raw/main/strain_example.png "Strain Example")
 
