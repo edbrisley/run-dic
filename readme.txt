@@ -2,6 +2,9 @@ RUN-DIC is an open-source Digital Image Correlation software system implemented 
 
 ![Strain Example](https://github.com/edbrisley/run-dic/raw/main/strain_example.png "Strain Example")
 
+.. figure:: https://github.com/edbrisley/run-dic/raw/main/strain_example.png
+   :alt: Example of surface strain measurement
+
 
 Current functionality:
 
