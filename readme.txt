@@ -1,16 +1,19 @@
-CURRENTLY CONFIGURING LIBRARY
+RUN-DIC is an open-source Digital Image Correlation software system implemented in Python. It may be used for high-resolution 3D surface reconstruction, 3D displacement tracking, and surface strain measurement. The library functionality currently includes:
 
-Current Functionality:
+![alt text](https://github.com/[username]/[reponame]/blob/[branch]/strain_example.jpg?raw=true)
 
-- local-DIC for planar displacements (lucas-kanade)
-- stereo-DIC for depth estimation
-- strain computation
-- global DIC (global folder)
-- implicit calibration (3D object, no distortion correction) (calibration folder)
+Current functionality:
 
-Refactoring in progress:
+- local 2D solver (lucas-kanade) which utilises the state-of-the art inverse-compositional gauss-newton optimization scheme (ICGN, )
+- global 2D solver (finite element based) which utilises the modified Gauss-Newton minimization scheme, with Tikhonov regularization (global folder)
+- strain computation via a virtual strain gauge (VSG) which utilises a local, linear polynomial fit
+- depth estimation, currently using the default openCV triangulation function, but the SVD and optimal approaches are also available
+- implicit camera calibration (3D calibration object, no distortion correction) (calibration folder)
+
+In progress for next release:
 
 - documentation
 - unit tests
+- automated requirements installation for conda and pip
 
 Download all files in workspace to run strain study example
