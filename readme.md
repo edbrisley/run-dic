@@ -10,7 +10,7 @@ Current functionality:
 - global 2D solver (finite element based) which utilises the modified Gauss-Newton minimization scheme, with Tikhonov regularization (global folder)
 - strain computation via a virtual strain gauge (VSG)
 - depth estimation using stereo-DIC (2 cameras), currently using the default openCV triangulation function, but the SVD and optimal approaches are also available
-- implicit camera calibration (3D calibration object, no distortion correction) (calibration folder)
+- implicit camera calibration (3D calibration object, no distortion correction) (implicit_calibration folder)
 
 In progress for next release:
 
