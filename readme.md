@@ -6,7 +6,7 @@ The figure below shows an example output for full-field surface strain measureme
 
 Current functionality:
 
-- local 2D solver (lucas-kanade) which utilises the state-of-the art inverse-compositional gauss-newton optimization scheme (ICGN)
+- local 2D solver (lucas-kanade) which utilises the inverse-compositional gauss-newton optimization scheme (ICGN)
 - global 2D solver (finite element based) which utilises the modified Gauss-Newton minimization scheme, with Tikhonov regularization (global folder)
 - strain computation via a virtual strain gauge (VSG)
 - depth estimation using stereo-DIC (2 cameras), currently using the default openCV triangulation function, but the SVD and optimal approaches are also available
